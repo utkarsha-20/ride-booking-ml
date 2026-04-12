@@ -1,13 +1,6 @@
 # Secrets — never commit
 .env
 
-# Generated model artifacts (run model.py to regenerate)
-*.pkl
-
-# Generated data (run model.py to regenerate)
-cleaned_data.csv
-predictions.csv
-
 # Python cache
 __pycache__/
 *.pyc
