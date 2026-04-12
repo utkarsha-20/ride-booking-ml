@@ -12,6 +12,7 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 import joblib
+from pathlib import Path
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -19,9 +20,11 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
 
+BASE = Path(__file__).parent
+
 # ── 1. Load ───────────────────────────────────────────────────────────────────
 print("Loading dataset...")
-df = pd.read_excel(r"C:\Users\Utkarsha\Downloads\Rides\Bookings.xlsx")
+df = pd.read_excel(BASE / "Bookings.xlsx")
 print(f"  Rows: {len(df):,}   Columns: {df.shape[1]}")
 print(f"  Status distribution:\n{df['Booking_Status'].value_counts().to_string()}\n")
 
@@ -145,13 +148,12 @@ for feat, score in fi.items():
     print(f"  {feat:<20} {bar}  {score:.4f}")
 
 # ── 8. Save artifacts ─────────────────────────────────────────────────────────
-BASE = "c:/Users/Utkarsha/Downloads/Rides"
-joblib.dump(model,      f"{BASE}/xgb_model.pkl")
-joblib.dump(le_vehicle, f"{BASE}/le_vehicle.pkl")
-joblib.dump(le_pickup,  f"{BASE}/le_pickup.pkl")
-joblib.dump(le_drop,    f"{BASE}/le_drop.pkl")
-joblib.dump(FEATURES,   f"{BASE}/features.pkl")
-joblib.dump(LABEL_NAMES, f"{BASE}/label_names.pkl")
+joblib.dump(model,       BASE / "xgb_model.pkl")
+joblib.dump(le_vehicle,  BASE / "le_vehicle.pkl")
+joblib.dump(le_pickup,   BASE / "le_pickup.pkl")
+joblib.dump(le_drop,     BASE / "le_drop.pkl")
+joblib.dump(FEATURES,    BASE / "features.pkl")
+joblib.dump(LABEL_NAMES, BASE / "label_names.pkl")
 print("\nModel artifacts saved.")
 
 # ── 9. Save predictions CSV ───────────────────────────────────────────────────
@@ -161,12 +163,12 @@ results['Predicted_Status'] = y_pred
 results['Actual_Label']     = [LABEL_NAMES[i] for i in y_test.values]
 results['Predicted_Label']  = [LABEL_NAMES[i] for i in y_pred]
 results['Correct']          = (results['Actual_Status'] == results['Predicted_Status']).astype(int)
-results.to_csv(f"{BASE}/predictions.csv", index=False)
+results.to_csv(BASE / "predictions.csv", index=False)
 print("Predictions saved -> predictions.csv")
 
 # ── 10. Save full dataset for Streamlit analytics ─────────────────────────────
 df_save = df[['Date', 'Hour', 'DayOfWeek', 'IsWeekend', 'IsNight', 'IsPeakHour',
               'Vehicle_Type', 'Booking_Value', 'Ride_Distance',
               'Driver_Ratings', 'Customer_Rating', 'Booking_Status']].copy()
-df_save.to_csv(f"{BASE}/cleaned_data.csv", index=False)
+df_save.to_csv(BASE / "cleaned_data.csv", index=False)
 print("Cleaned data saved -> cleaned_data.csv")

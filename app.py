@@ -149,23 +149,32 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Data ──────────────────────────────────────────────────────────────────────
-BASE = "c:/Users/Utkarsha/Downloads/Rides"
+import subprocess
+import sys
+from pathlib import Path
+
+BASE = Path(__file__).parent
+
+# If model artifacts don't exist, train the model first (runs once on deploy)
+if not (BASE / "xgb_model.pkl").exists():
+    with st.spinner("First-time setup: training model..."):
+        subprocess.run([sys.executable, str(BASE / "model.py")], check=True)
 
 @st.cache_data
 def load_data():
-    return pd.read_csv(f"{BASE}/cleaned_data.csv", parse_dates=['Date'])
+    return pd.read_csv(BASE / "cleaned_data.csv", parse_dates=['Date'])
 
 @st.cache_data
 def load_predictions():
-    return pd.read_csv(f"{BASE}/predictions.csv")
+    return pd.read_csv(BASE / "predictions.csv")
 
 @st.cache_resource
 def load_model():
-    model    = joblib.load(f"{BASE}/xgb_model.pkl")
-    features = joblib.load(f"{BASE}/features.pkl")
-    le_v     = joblib.load(f"{BASE}/le_vehicle.pkl")
-    le_p     = joblib.load(f"{BASE}/le_pickup.pkl")
-    le_d     = joblib.load(f"{BASE}/le_drop.pkl")
+    model    = joblib.load(BASE / "xgb_model.pkl")
+    features = joblib.load(BASE / "features.pkl")
+    le_v     = joblib.load(BASE / "le_vehicle.pkl")
+    le_p     = joblib.load(BASE / "le_pickup.pkl")
+    le_d     = joblib.load(BASE / "le_drop.pkl")
     return model, features, le_v, le_p, le_d
 
 df   = load_data()
