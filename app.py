@@ -149,16 +149,19 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Data ──────────────────────────────────────────────────────────────────────
-import subprocess
-import sys
+import runpy
 from pathlib import Path
 
 BASE = Path(__file__).parent
 
 # If model artifacts don't exist, train the model first (runs once on deploy)
 if not (BASE / "xgb_model.pkl").exists():
-    with st.spinner("First-time setup: training model..."):
-        subprocess.run([sys.executable, str(BASE / "model.py")], check=True)
+    with st.spinner("First-time setup: training model (takes ~30 seconds)..."):
+        try:
+            runpy.run_path(str(BASE / "model.py"), run_name="__main__")
+        except Exception as e:
+            st.error(f"Model training failed: {e}")
+            st.stop()
 
 @st.cache_data
 def load_data():
