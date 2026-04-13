@@ -9,6 +9,8 @@ import joblib
 import plotly.graph_objects as go
 import streamlit as st
 
+import db
+
 st.set_page_config(
     page_title="Ride Bookings",
     page_icon="🚗",
@@ -307,13 +309,13 @@ with tab_predict:
         'weekend':    '#9ece6a',   # sage green
     }
 
+    # When the user clicks "Calculate fare", compute and store in session state
     if predict_btn:
         is_weekend = 1 if dow >= 5 else 0
         is_night   = 1 if (hour >= 22 or hour <= 4) else 0
         is_peak    = 1 if hour in (7, 8, 9, 17, 18, 19, 20) else 0
 
         vt_enc = int(le_vehicle.transform([vehicle_type])[0])
-        accent = VEHICLE_COLORS.get(vehicle_type, PURPLE)
 
         input_df = pd.DataFrame([{
             'Ride_Distance':    distance,
@@ -325,7 +327,38 @@ with tab_predict:
             'IsPeakHour':       is_peak,
         }])
 
-        predicted_fare = float(model.predict(input_df)[0])
+        st.session_state['last_prediction'] = {
+            'vehicle_type':   vehicle_type,
+            'distance':       int(distance),
+            'hour':           hour,
+            'hour_label':     hour_label,
+            'day_of_week':    day_of_week,
+            'dow':            dow,
+            'is_weekend':     is_weekend,
+            'is_night':       is_night,
+            'is_peak':        is_peak,
+            'vt_enc':         vt_enc,
+            'predicted_fare': float(model.predict(input_df)[0]),
+        }
+        # A fresh prediction resets any save notice
+        st.session_state.pop('save_notice', None)
+
+    # Render results only if we have a stored prediction
+    if 'last_prediction' in st.session_state:
+        p = st.session_state['last_prediction']
+        vehicle_type   = p['vehicle_type']
+        distance       = p['distance']
+        hour           = p['hour']
+        hour_label     = p['hour_label']
+        day_of_week    = p['day_of_week']
+        dow            = p['dow']
+        is_weekend     = p['is_weekend']
+        is_night       = p['is_night']
+        is_peak        = p['is_peak']
+        vt_enc         = p['vt_enc']
+        predicted_fare = p['predicted_fare']
+
+        accent = VEHICLE_COLORS.get(vehicle_type, PURPLE)
 
         # Left side: result.  Right side: fare curve chart.
         left, right = st.columns([1, 1.6])
@@ -479,6 +512,50 @@ with tab_predict:
         )
         fig_cmp.update_yaxes(showgrid=False)
         st.plotly_chart(fig_cmp, use_container_width=True)
+
+        # ── Save to MySQL ─────────────────────────────────────────────────
+        st.markdown(
+            f"<hr style='border:none; border-top:1px solid {BORDER}; "
+            f"margin:18px 0 10px 0;'/>",
+            unsafe_allow_html=True,
+        )
+        sc1, sc2 = st.columns([1, 3])
+        with sc1:
+            save_btn = st.button("Save to database", use_container_width=True)
+        with sc2:
+            notice = st.session_state.get('save_notice')
+            if notice:
+                kind, msg = notice
+                color = accent if kind == 'ok' else '#f7768e'
+                st.markdown(
+                    f"<div style='padding:7px 0; color:{color}; font-size:12px;'>"
+                    f"{msg}</div>",
+                    unsafe_allow_html=True,
+                )
+
+        if save_btn:
+            try:
+                db.ensure_schema()
+                row_id = db.save_prediction(
+                    vehicle_type=vehicle_type,
+                    ride_distance=distance,
+                    hour=hour,
+                    day_of_week=day_of_week,
+                    is_weekend=is_weekend,
+                    is_night=is_night,
+                    is_peak_hour=is_peak,
+                    predicted_fare=predicted_fare,
+                )
+                st.session_state['save_notice'] = (
+                    'ok',
+                    f"Saved as row #{row_id} in fare_predictions.",
+                )
+            except Exception as e:
+                st.session_state['save_notice'] = (
+                    'err',
+                    f"Could not save: {e}",
+                )
+            st.rerun()
     else:
         st.markdown(f"""
         <div style="color:{MUTED}; font-size:13px; padding:24px 0;">
