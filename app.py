@@ -163,16 +163,19 @@ if not (BASE / "xgb_model.pkl").exists():
             st.error(f"Model training failed: {e}")
             st.stop()
 
+def _mtime(path):
+    return path.stat().st_mtime if path.exists() else 0
+
 @st.cache_data
-def load_data():
+def load_data(_mtime_key):
     return pd.read_csv(BASE / "cleaned_data.csv", parse_dates=['Date'])
 
 @st.cache_data
-def load_predictions():
+def load_predictions(_mtime_key):
     return pd.read_csv(BASE / "predictions.csv")
 
 @st.cache_resource
-def load_model():
+def load_model(_mtime_key):
     model    = joblib.load(BASE / "xgb_model.pkl")
     features = joblib.load(BASE / "features.pkl")
     le_v     = joblib.load(BASE / "le_vehicle.pkl")
@@ -180,9 +183,9 @@ def load_model():
     le_d     = joblib.load(BASE / "le_drop.pkl")
     return model, features, le_v, le_p, le_d
 
-df   = load_data()
-pred = load_predictions()
-model, features, le_vehicle, le_pickup, le_drop = load_model()
+df   = load_data(_mtime(BASE / "cleaned_data.csv"))
+pred = load_predictions(_mtime(BASE / "predictions.csv"))
+model, features, le_vehicle, le_pickup, le_drop = load_model(_mtime(BASE / "xgb_model.pkl"))
 
 VEHICLE_TYPES = ['Auto', 'Bike', 'eBike', 'Mini', 'Prime Plus', 'Prime Sedan', 'Prime SUV']
 
