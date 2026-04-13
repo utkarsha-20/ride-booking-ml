@@ -660,7 +660,7 @@ with tab4:
             fig2.add_trace(go.Scatter(
                 x=curve_df['Distance'], y=curve_df['Fare'],
                 mode='lines', line=dict(color=PRIMARY, width=2),
-                fill='tozeroy', fillcolor=f"{PRIMARY}22",
+                fill='tozeroy', fillcolor='rgba(88, 166, 255, 0.15)',
             ))
             # Mark selected distance
             fig2.add_trace(go.Scatter(
