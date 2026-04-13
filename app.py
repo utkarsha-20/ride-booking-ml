@@ -8,9 +8,7 @@ import pandas as pd
 import joblib
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score
 
 st.set_page_config(
     page_title="Ride Bookings",
@@ -143,8 +141,8 @@ st.markdown(f"""
 # ── Header bar ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="topbar">
-    <span class="topbar-title">Ride Bookings</span>
-    <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Classifier</span>
+    <span class="topbar-title">Ride Fare Prediction</span>
+    <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -179,15 +177,13 @@ def load_model(_mtime_key):
     model    = joblib.load(BASE / "xgb_model.pkl")
     features = joblib.load(BASE / "features.pkl")
     le_v     = joblib.load(BASE / "le_vehicle.pkl")
-    le_p     = joblib.load(BASE / "le_pickup.pkl")
-    le_d     = joblib.load(BASE / "le_drop.pkl")
-    return model, features, le_v, le_p, le_d
+    return model, features, le_v
 
 df   = load_data(_mtime(BASE / "cleaned_data.csv"))
 pred = load_predictions(_mtime(BASE / "predictions.csv"))
-model, features, le_vehicle, le_pickup, le_drop = load_model(_mtime(BASE / "xgb_model.pkl"))
+model, features, le_vehicle = load_model(_mtime(BASE / "xgb_model.pkl"))
 
-VEHICLE_TYPES = ['Auto', 'Bike', 'eBike', 'Mini', 'Prime Plus', 'Prime Sedan', 'Prime SUV']
+VEHICLE_TYPES = ['Bike', 'eBike', 'Auto', 'Mini', 'Prime Sedan', 'Prime Plus', 'Prime SUV']
 
 CHART_LAYOUT = dict(
     paper_bgcolor='rgba(0,0,0,0)',
@@ -407,40 +403,45 @@ with tab2:
 # TAB 3: MODEL
 # ═════════════════════════════════════════════════════════════════════════════
 with tab3:
-    y_test = pred['Actual_Status']
-    y_pred_vals = pred['Predicted_Status']
+    y_actual = pred['Actual_Fare']
+    y_pred_vals = pred['Predicted_Fare']
 
-    acc      = accuracy_score(y_test, y_pred_vals)
-    f1_mac   = f1_score(y_test, y_pred_vals, average='macro')
-    f1_wt    = f1_score(y_test, y_pred_vals, average='weighted')
-    baseline = (y_test == 0).mean()
+    mae  = (y_actual - y_pred_vals).abs().mean()
+    rmse = ((y_actual - y_pred_vals) ** 2).mean() ** 0.5
+    r2   = 1 - ((y_actual - y_pred_vals) ** 2).sum() / ((y_actual - y_actual.mean()) ** 2).sum()
+    mean_fare = y_actual.mean()
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Accuracy",    f"{acc*100:.1f}%")
-    m2.metric("Baseline",    f"{baseline*100:.1f}%")
-    m3.metric("F1 Macro",    f"{f1_mac:.3f}")
-    m4.metric("F1 Weighted", f"{f1_wt:.3f}")
+    m1.metric("R squared",    f"{r2:.3f}")
+    m2.metric("MAE",          f"Rs. {mae:.1f}")
+    m3.metric("RMSE",         f"Rs. {rmse:.1f}")
+    m4.metric("Mean fare",    f"Rs. {mean_fare:.0f}")
 
     st.info(
-        "Synthetic dataset — booking status is distributed uniformly across all features. "
-        "Real-world data would yield 80-90%+ accuracy with the same model."
+        "Model trained on simulated ride fares generated from a realistic pricing formula "
+        "(base fare + per-km rate + surge pricing). The real Bookings.xlsx dataset is used "
+        "throughout the Overview and Analytics tabs."
     )
 
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        cm = confusion_matrix(y_test, y_pred_vals)
-        fig = px.imshow(
-            cm, x=LABEL_NAMES, y=LABEL_NAMES,
-            text_auto=True, color_continuous_scale=[[0, BG], [1, PRIMARY]],
-            labels=dict(x="Predicted", y="Actual", color="Count"),
-            aspect="auto",
+        # Actual vs predicted scatter
+        sample = pred.sample(min(3000, len(pred)), random_state=42)
+        fig = px.scatter(
+            sample, x='Actual_Fare', y='Predicted_Fare',
+            color='Vehicle_Type', opacity=0.5,
+            color_discrete_sequence=[PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT],
         )
-        apply_layout(fig, "Confusion matrix",
-                     margin=dict(t=28, b=5, l=5, r=5), coloraxis_showscale=False,
+        fig.add_trace(go.Scatter(
+            x=[0, y_actual.max()], y=[0, y_actual.max()],
+            mode='lines', line=dict(color=MUTED, dash='dash', width=1),
+            showlegend=False, hoverinfo='skip',
+        ))
+        fig.update_traces(marker_size=3, selector=dict(mode='markers'))
+        apply_layout(fig, "Actual vs predicted fare",
+                     legend=dict(font=dict(size=7), orientation='h', y=-0.18),
                      height=CH + 20)
-        fig.update_xaxes(tickfont=dict(size=7))
-        fig.update_yaxes(tickfont=dict(size=7))
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
@@ -455,234 +456,268 @@ with tab3:
         st.plotly_chart(fig2, use_container_width=True)
 
     with c3:
-        report = classification_report(y_test, y_pred_vals, target_names=LABEL_NAMES, output_dict=True)
-        rdata = []
-        for label in LABEL_NAMES:
-            rdata.append({'Class': label, 'Metric': 'Precision', 'Value': report[label]['precision']})
-            rdata.append({'Class': label, 'Metric': 'Recall',    'Value': report[label]['recall']})
-            rdata.append({'Class': label, 'Metric': 'F1',        'Value': report[label]['f1-score']})
-        rdf = pd.DataFrame(rdata)
-        fig3 = px.bar(
-            rdf, x='Value', y='Class', color='Metric', barmode='group',
-            orientation='h',
-            color_discrete_sequence=[PRIMARY, ORANGE, GREEN],
+        # Residual (error) distribution
+        residuals = y_actual - y_pred_vals
+        fig3 = px.histogram(
+            residuals, nbins=50,
+            color_discrete_sequence=[PRIMARY],
         )
-        apply_layout(fig3, "Precision / Recall / F1",
-                     legend=dict(font=dict(size=8), orientation='h', y=-0.12),
-                     height=CH + 20)
+        apply_layout(fig3, "Residual distribution",
+                     xaxis_title="Error (Rs.)", height=CH + 20, showlegend=False)
         st.plotly_chart(fig3, use_container_width=True)
 
     c4, c5, c6 = st.columns(3)
 
     with c4:
-        actual_counts    = pd.Series(y_test).map(dict(enumerate(LABEL_NAMES))).value_counts()
-        predicted_counts = pd.Series(y_pred_vals).map(dict(enumerate(LABEL_NAMES))).value_counts()
-        compare_df = pd.DataFrame({'Actual': actual_counts, 'Predicted': predicted_counts}).reset_index()
-        compare_df.columns = ['Status', 'Actual', 'Predicted']
+        # Error by vehicle type
+        pred_copy = pred.copy()
+        pred_copy['Abs_Error'] = (pred_copy['Actual_Fare'] - pred_copy['Predicted_Fare']).abs()
+        err_by_vehicle = pred_copy.groupby('Vehicle_Type')['Abs_Error'].mean().reset_index()
+        err_by_vehicle = err_by_vehicle.sort_values('Abs_Error', ascending=True)
         fig4 = px.bar(
-            compare_df.melt(id_vars='Status', var_name='Type', value_name='Count'),
-            x='Status', y='Count', color='Type', barmode='group',
-            color_discrete_sequence=[PRIMARY, ORANGE],
+            err_by_vehicle, x='Abs_Error', y='Vehicle_Type',
+            orientation='h',
+            color='Abs_Error',
+            color_continuous_scale=[[0, GREEN], [1, ORANGE]],
+            text=err_by_vehicle['Abs_Error'].apply(lambda x: f"Rs.{x:.0f}"),
         )
-        apply_layout(fig4, "Actual vs predicted",
-                     legend=dict(font=dict(size=8), orientation='h', y=-0.15),
-                     xaxis_tickfont_size=7, xaxis_tickangle=-20)
+        fig4.update_traces(textposition='outside', textfont_size=9)
+        apply_layout(fig4, "MAE by vehicle type",
+                     coloraxis_showscale=False, height=CH)
         st.plotly_chart(fig4, use_container_width=True)
 
     with c5:
-        # Per-class recall gauges
-        fig5 = make_subplots(rows=1, cols=4, specs=[[{'type': 'indicator'}]*4])
-        gauge_colors = [GREEN, RED, ORANGE, PURPLE]
-        for i, label in enumerate(LABEL_NAMES):
-            mask = y_test == i
-            class_acc = (y_pred_vals[mask] == i).mean() * 100 if mask.sum() > 0 else 0
-            fig5.add_trace(go.Indicator(
-                mode="gauge+number",
-                value=class_acc,
-                title={'text': label.split(' ')[0], 'font': {'size': 9, 'color': MUTED}},
-                number={'suffix': '%', 'font': {'size': 12, 'color': TEXT}},
-                gauge=dict(
-                    axis=dict(range=[0, 100], tickfont=dict(size=6, color=MUTED)),
-                    bar=dict(color=gauge_colors[i]),
-                    bgcolor=SURFACE,
-                    bordercolor=BORDER,
-                ),
-            ), row=1, col=i+1)
-        apply_layout(fig5, "Per-class recall", margin=dict(t=32, b=10, l=10, r=10))
+        # Predicted fare by distance (line chart showing the model's learned relationship)
+        line_df = pred.copy()
+        line_df['Dist_Bin'] = pd.cut(line_df['Ride_Distance'], bins=20)
+        line_agg = line_df.groupby(['Dist_Bin', 'Vehicle_Type'], observed=True)['Predicted_Fare'].mean().reset_index()
+        line_agg['Dist_Mid'] = line_agg['Dist_Bin'].apply(lambda x: x.mid)
+        fig5 = px.line(
+            line_agg, x='Dist_Mid', y='Predicted_Fare', color='Vehicle_Type',
+            color_discrete_sequence=[PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT],
+        )
+        apply_layout(fig5, "Predicted fare vs distance",
+                     xaxis_title="Distance (km)", yaxis_title="Fare (Rs.)",
+                     legend=dict(font=dict(size=7), orientation='h', y=-0.18),
+                     height=CH)
         st.plotly_chart(fig5, use_container_width=True)
 
     with c6:
-        pred_copy = pred.copy()
-        pred_copy['Error'] = abs(pred_copy['Actual_Status'] - pred_copy['Predicted_Status'])
-        err_dist = pred_copy['Error'].value_counts().sort_index().reset_index()
-        err_dist.columns = ['Off_By', 'Count']
-        err_dist['Off_By'] = err_dist['Off_By'].astype(str)
+        # Percentage error distribution
+        pct_err = ((y_actual - y_pred_vals) / y_actual * 100).abs()
+        bins_data = pd.cut(pct_err, bins=[0, 5, 10, 20, 50, 100]).value_counts().sort_index()
+        bin_df = pd.DataFrame({
+            'Range': ['<5%', '5-10%', '10-20%', '20-50%', '>50%'],
+            'Count': bins_data.values,
+        })
         fig6 = px.pie(
-            err_dist, names='Off_By', values='Count',
-            color_discrete_sequence=[GREEN, ORANGE, RED, PURPLE],
+            bin_df, names='Range', values='Count',
+            color_discrete_sequence=[GREEN, PRIMARY, ORANGE, RED, PURPLE],
             hole=0.45,
         )
         fig6.update_traces(textinfo='percent', textfont_size=9)
-        apply_layout(fig6, "Prediction error distance",
-                     legend=dict(font=dict(size=8), title=dict(text='Off by', font=dict(size=8))))
+        apply_layout(fig6, "Error % buckets",
+                     legend=dict(font=dict(size=8)))
         st.plotly_chart(fig6, use_container_width=True)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# TAB 4: PREDICT
+# TAB 4: PREDICT — Fare calculator
 # ═════════════════════════════════════════════════════════════════════════════
 with tab4:
     # Inline form — all inputs across one row
-    f1, f2, f3, f4, f5, f6, f7 = st.columns([1.2, 1, 1, 1.2, 1.2, 1, 0.6])
+    f1, f2, f3, f4, f5 = st.columns([1.3, 1.3, 1, 1.3, 0.7])
     with f1:
-        vehicle_type = st.selectbox("Vehicle", VEHICLE_TYPES, label_visibility="collapsed",
-                                    help="Vehicle type")
+        vehicle_type = st.selectbox("Vehicle", VEHICLE_TYPES, index=4,
+                                    label_visibility="collapsed")
     with f2:
-        booking_value = st.number_input("Fare", min_value=100, max_value=3000, value=500, step=50,
-                                        label_visibility="collapsed", help="Fare (Rs.)")
+        distance = st.slider("Distance", min_value=1, max_value=50, value=15, step=1,
+                             label_visibility="collapsed")
     with f3:
-        hour = st.number_input("Hour", min_value=0, max_value=23, value=9, step=1,
-                               label_visibility="collapsed", help="Hour (0-23)")
+        hour = st.slider("Hour", min_value=0, max_value=23, value=9, step=1,
+                         label_visibility="collapsed")
     with f4:
-        pickup_loc = st.selectbox("Pickup", sorted(le_pickup.classes_.tolist()),
-                                  label_visibility="collapsed", help="Pickup location")
-    with f5:
-        drop_loc = st.selectbox("Drop", sorted(le_drop.classes_.tolist()),
-                                label_visibility="collapsed", help="Drop location")
-    with f6:
-        day_of_week = st.selectbox("Day", ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
-                                   label_visibility="collapsed", help="Day of week")
-        dow_map = {'Mon':0,'Tue':1,'Wed':2,'Thu':3,'Fri':4,'Sat':5,'Sun':6}
+        day_of_week = st.selectbox("Day",
+                                    ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
+                                    label_visibility="collapsed")
+        dow_map = {'Monday':0,'Tuesday':1,'Wednesday':2,'Thursday':3,'Friday':4,'Saturday':5,'Sunday':6}
         dow = dow_map[day_of_week]
-    with f7:
-        predict_btn = st.button("Run", type="primary", use_container_width=True)
+    with f5:
+        predict_btn = st.button("Predict", type="primary", use_container_width=True)
 
     # Field labels row
     st.markdown(f"""
-    <div style="display:flex; gap:0; padding:0 0 6px 0; border-bottom:1px solid {BORDER}; margin-bottom:8px;">
-        <span style="flex:1.2; font-size:10px; color:{MUTED};">Vehicle</span>
-        <span style="flex:1; font-size:10px; color:{MUTED};">Fare (Rs.)</span>
+    <div style="display:flex; gap:0; padding:0 0 6px 0; border-bottom:1px solid {BORDER}; margin-bottom:10px;">
+        <span style="flex:1.3; font-size:10px; color:{MUTED};">Vehicle type</span>
+        <span style="flex:1.3; font-size:10px; color:{MUTED};">Distance (km)</span>
         <span style="flex:1; font-size:10px; color:{MUTED};">Hour</span>
-        <span style="flex:1.2; font-size:10px; color:{MUTED};">Pickup</span>
-        <span style="flex:1.2; font-size:10px; color:{MUTED};">Drop</span>
-        <span style="flex:1; font-size:10px; color:{MUTED};">Day</span>
-        <span style="flex:0.6;"></span>
+        <span style="flex:1.3; font-size:10px; color:{MUTED};">Day</span>
+        <span style="flex:0.7;"></span>
     </div>
     """, unsafe_allow_html=True)
 
     if predict_btn:
         is_weekend = 1 if dow >= 5 else 0
-        is_night   = 1 if (hour >= 22 or hour <= 5) else 0
-        is_peak    = 1 if hour in [7,8,9,17,18,19,20] else 0
+        is_night   = 1 if (hour >= 22 or hour <= 4) else 0
+        is_peak    = 1 if hour in (7, 8, 9, 17, 18, 19, 20) else 0
 
         vt_enc = int(le_vehicle.transform([vehicle_type])[0])
-        pk_enc = int(le_pickup.transform([pickup_loc])[0])
-        dr_enc = int(le_drop.transform([drop_loc])[0])
-
-        # Default ride distance to dataset median for successful rides;
-        # Has_Distance flag indicates a normally-completed trip
-        median_dist = float(df[df['Booking_Status'] == 'Success']['Ride_Distance'].median())
 
         input_df = pd.DataFrame([{
-            'Vehicle_Type_Enc': vt_enc, 'Pickup_Enc': pk_enc,
-            'Drop_Enc': dr_enc, 'Booking_Value': booking_value,
-            'Ride_Distance': median_dist, 'Has_Distance': 1,
-            'Hour': hour, 'DayOfWeek': dow, 'IsWeekend': is_weekend,
-            'IsNight': is_night, 'IsPeakHour': is_peak,
+            'Ride_Distance':    distance,
+            'Vehicle_Type_Enc': vt_enc,
+            'Hour':             hour,
+            'DayOfWeek':        dow,
+            'IsWeekend':        is_weekend,
+            'IsNight':          is_night,
+            'IsPeakHour':       is_peak,
         }])
 
-        pred_class = model.predict(input_df)[0]
-        pred_proba = model.predict_proba(input_df)[0]
-        predicted_label = LABEL_NAMES[pred_class]
-        color = STATUS_COLORS[predicted_label]
+        predicted_fare = float(model.predict(input_df)[0])
 
-        # ── Result row: 4 status cards showing each class probability ─────
-        r1, r2, r3, r4 = st.columns(4)
-        for col, i, label in zip([r1, r2, r3, r4], range(4), LABEL_NAMES):
-            prob = pred_proba[i] * 100
-            is_predicted = (i == pred_class)
-            border_c = STATUS_COLORS[label] if is_predicted else BORDER
-            bg = f"{STATUS_COLORS[label]}0d" if is_predicted else SURFACE
-            with col:
-                st.markdown(f"""
-                <div style="background:{bg}; border:1px solid {border_c};
-                            border-radius:4px; padding:10px 12px;">
+        # Determine active surge tags
+        surge_tags = []
+        if is_peak:    surge_tags.append("Peak hour +25%")
+        if is_night:   surge_tags.append("Late night +30%")
+        if is_weekend: surge_tags.append("Weekend +10%")
+        surge_html = " &middot; ".join(surge_tags) if surge_tags else "No surge"
+
+        # ── Result banner: big fare number ─────────────────────────────────
+        st.markdown(f"""
+        <div style="background:{SURFACE}; border:1px solid {BORDER};
+                    border-radius:6px; padding:16px 20px; margin-bottom:10px;">
+            <div style="display:flex; align-items:baseline; gap:16px;">
+                <div>
                     <div style="font-size:11px; color:{MUTED}; margin-bottom:2px;">
-                        {label}
+                        Predicted fare
                     </div>
-                    <div style="font-size:22px; font-weight:600;
-                                color:{STATUS_COLORS[label] if is_predicted else MUTED};">
-                        {prob:.1f}%
-                    </div>
-                    <div style="background:{BORDER}; border-radius:2px; height:3px; margin-top:6px;">
-                        <div style="background:{STATUS_COLORS[label]}; width:{prob}%;
-                                    height:3px; border-radius:2px;"></div>
+                    <div style="font-size:32px; font-weight:600; color:{GREEN}; line-height:1;">
+                        Rs. {predicted_fare:,.0f}
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="margin-left:auto; text-align:right;">
+                    <div style="font-size:11px; color:{MUTED}; margin-bottom:2px;">
+                        {distance} km &middot; {vehicle_type} &middot; {hour:02d}:00
+                    </div>
+                    <div style="font-size:11px; color:{MUTED};">
+                        {surge_html}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # ── Charts row: probability bar + comparison with dataset avg ──────
+        # ── Charts row ─────────────────────────────────────────────────────
         ch1, ch2, ch3 = st.columns(3)
 
         with ch1:
-            prob_df = pd.DataFrame({'Status': LABEL_NAMES, 'Probability': pred_proba * 100})
-            fig = px.bar(
-                prob_df, y='Status', x='Probability', orientation='h',
-                color='Status', color_discrete_map=STATUS_COLORS,
-                text=prob_df['Probability'].apply(lambda x: f"{x:.1f}%"),
-            )
-            fig.update_traces(textposition='outside', textfont_size=9)
-            apply_layout(fig, "Probability breakdown",
+            # Compare fare across all vehicle types for this distance & time
+            compare_rows = []
+            for vt in VEHICLE_TYPES:
+                vt_code = int(le_vehicle.transform([vt])[0])
+                row = pd.DataFrame([{
+                    'Ride_Distance':    distance,
+                    'Vehicle_Type_Enc': vt_code,
+                    'Hour':             hour,
+                    'DayOfWeek':        dow,
+                    'IsWeekend':        is_weekend,
+                    'IsNight':          is_night,
+                    'IsPeakHour':       is_peak,
+                }])
+                compare_rows.append({
+                    'Vehicle': vt,
+                    'Fare': float(model.predict(row)[0])
+                })
+            cmp_df = pd.DataFrame(compare_rows).sort_values('Fare')
+            colors = [GREEN if v == vehicle_type else MUTED for v in cmp_df['Vehicle']]
+            fig = go.Figure(go.Bar(
+                x=cmp_df['Fare'], y=cmp_df['Vehicle'], orientation='h',
+                text=[f"Rs.{f:.0f}" for f in cmp_df['Fare']],
+                textposition='outside',
+                textfont=dict(size=9, color=TEXT),
+                marker=dict(color=colors),
+            ))
+            apply_layout(fig, "Fare across vehicles",
                          showlegend=False, height=CH)
             st.plotly_chart(fig, use_container_width=True)
 
         with ch2:
-            # Compare this prediction vs dataset average
-            dataset_rates = df['Booking_Status'].value_counts(normalize=True).reindex(LABEL_NAMES).fillna(0) * 100
-            compare_data = []
-            for i, label in enumerate(LABEL_NAMES):
-                compare_data.append({'Status': label, 'Source': 'This prediction', 'Pct': pred_proba[i] * 100})
-                compare_data.append({'Status': label, 'Source': 'Dataset average', 'Pct': dataset_rates[label]})
-            cdf = pd.DataFrame(compare_data)
-            fig2 = px.bar(
-                cdf, x='Status', y='Pct', color='Source', barmode='group',
-                color_discrete_sequence=[PRIMARY, MUTED],
-            )
-            apply_layout(fig2, "vs. dataset average",
-                         legend=dict(font=dict(size=8), orientation='h', y=-0.15),
-                         xaxis_tickfont_size=7, xaxis_tickangle=-15, height=CH)
+            # Fare curve across all distances for selected vehicle
+            curve_rows = []
+            for d in range(1, 51):
+                row = pd.DataFrame([{
+                    'Ride_Distance':    d,
+                    'Vehicle_Type_Enc': vt_enc,
+                    'Hour':             hour,
+                    'DayOfWeek':        dow,
+                    'IsWeekend':        is_weekend,
+                    'IsNight':          is_night,
+                    'IsPeakHour':       is_peak,
+                }])
+                curve_rows.append({'Distance': d, 'Fare': float(model.predict(row)[0])})
+            curve_df = pd.DataFrame(curve_rows)
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(
+                x=curve_df['Distance'], y=curve_df['Fare'],
+                mode='lines', line=dict(color=PRIMARY, width=2),
+                fill='tozeroy', fillcolor=f"{PRIMARY}22",
+            ))
+            # Mark selected distance
+            fig2.add_trace(go.Scatter(
+                x=[distance], y=[predicted_fare],
+                mode='markers', marker=dict(color=GREEN, size=10, line=dict(color=TEXT, width=1)),
+            ))
+            apply_layout(fig2, f"Fare curve ({vehicle_type})",
+                         xaxis_title="Distance (km)", yaxis_title="Fare (Rs.)",
+                         showlegend=False, height=CH)
             st.plotly_chart(fig2, use_container_width=True)
 
         with ch3:
-            # What does the dataset look like for this vehicle + hour combo
-            filtered = df[(df['Vehicle_Type'] == vehicle_type) & (df['Hour'] == hour)]
-            if len(filtered) > 0:
-                filt_rates = filtered['Booking_Status'].value_counts(normalize=True).reindex(LABEL_NAMES).fillna(0) * 100
-                filt_df = pd.DataFrame({'Status': LABEL_NAMES, 'Rate': filt_rates.values})
-                fig3 = px.bar(
-                    filt_df, y='Status', x='Rate', orientation='h',
-                    color='Status', color_discrete_map=STATUS_COLORS,
-                    text=filt_df['Rate'].apply(lambda x: f"{x:.1f}%"),
-                )
-                fig3.update_traces(textposition='outside', textfont_size=9)
-                apply_layout(fig3, f"Historical: {vehicle_type} at {hour}:00",
-                             showlegend=False, height=CH)
-            else:
-                fig3 = go.Figure()
-                apply_layout(fig3, "No historical data for this combo", height=CH)
+            # Fare across all hours for selected vehicle + distance
+            hour_rows = []
+            for h in range(24):
+                is_n = 1 if (h >= 22 or h <= 4) else 0
+                is_p = 1 if h in (7, 8, 9, 17, 18, 19, 20) else 0
+                row = pd.DataFrame([{
+                    'Ride_Distance':    distance,
+                    'Vehicle_Type_Enc': vt_enc,
+                    'Hour':             h,
+                    'DayOfWeek':        dow,
+                    'IsWeekend':        is_weekend,
+                    'IsNight':          is_n,
+                    'IsPeakHour':       is_p,
+                }])
+                hour_rows.append({'Hour': h, 'Fare': float(model.predict(row)[0])})
+            hour_df = pd.DataFrame(hour_rows)
+            bar_colors = [GREEN if h == hour else PRIMARY for h in hour_df['Hour']]
+            fig3 = go.Figure(go.Bar(
+                x=hour_df['Hour'], y=hour_df['Fare'],
+                marker=dict(color=bar_colors),
+            ))
+            apply_layout(fig3, f"Fare by hour ({distance} km, {vehicle_type})",
+                         xaxis_title="Hour", yaxis_title="Fare (Rs.)",
+                         showlegend=False, height=CH,
+                         xaxis=dict(dtick=3))
             st.plotly_chart(fig3, use_container_width=True)
 
-        # ── Detail row: derived features table ─────────────────────────────
-        with st.expander("Derived features"):
+        # ── Details ────────────────────────────────────────────────────────
+        with st.expander("Model inputs & breakdown"):
             detail_df = pd.DataFrame([{
-                'Vehicle': vehicle_type,
-                'Fare': f"Rs.{booking_value}",
-                'Hour': hour,
-                'Day': day_of_week,
-                'Weekend': 'Yes' if is_weekend else 'No',
-                'Night': 'Yes' if is_night else 'No',
-                'Peak': 'Yes' if is_peak else 'No',
-                'Pickup': pickup_loc,
-                'Drop': drop_loc,
+                'Vehicle':       vehicle_type,
+                'Distance (km)': distance,
+                'Hour':          f"{hour:02d}:00",
+                'Day':           day_of_week,
+                'Weekend':       'Yes' if is_weekend else 'No',
+                'Night surge':   'Yes' if is_night else 'No',
+                'Peak surge':    'Yes' if is_peak else 'No',
+                'Predicted':     f"Rs. {predicted_fare:,.0f}",
             }])
             st.dataframe(detail_df, use_container_width=True, hide_index=True)
+    else:
+        # Default empty state message
+        st.markdown(f"""
+        <div style="padding:40px 20px; text-align:center; color:{MUTED}; font-size:13px;
+                    border:1px dashed {BORDER}; border-radius:6px;">
+            Choose a vehicle, distance, hour, and day &mdash; then click <b>Predict</b>.
+        </div>
+        """, unsafe_allow_html=True)

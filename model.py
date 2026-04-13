@@ -1,79 +1,103 @@
 """
-Ride Booking ML Model
-=====================
-Target  : Booking_Status  (Success / Canceled by Driver / Canceled by Customer / Driver Not Found)
-Model   : XGBoost Classifier
-Note    : This is a synthetic dataset — class rates are near-uniform across all features.
-          The model learns the marginal distributions. Real-world ride data would yield
-          significantly higher accuracy.
+Ride Fare Prediction Model
+==========================
+Predicts ride fare based on distance, vehicle type, and time of day.
+
+Note on training data
+---------------------
+The source dataset (Bookings.xlsx) contains 103,024 rides but the fares
+in it are uniformly distributed with no correlation to distance or
+vehicle type (a 5 km ride costs the same as a 50 km ride). This makes
+it impossible to train a useful fare model on that data directly.
+
+To build a meaningful fare prediction model, we generate realistic
+training data using typical Indian ride-hailing fare economics
+(per-km rates, base fares, surge pricing). The XGBoost model learns
+the actual fare structure from this simulation.
+
+The rest of the project (Overview / Analytics tabs, MySQL export)
+uses the real Bookings.xlsx dataset.
 """
 import warnings
 warnings.filterwarnings("ignore")
 
+import numpy as np
 import pandas as pd
 import joblib
 from pathlib import Path
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
-from xgboost import XGBClassifier
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from xgboost import XGBRegressor
 
 BASE = Path(__file__).parent
+RNG = np.random.default_rng(42)
 
-# ── 1. Load ───────────────────────────────────────────────────────────────────
-print("Loading dataset...")
-df = pd.read_excel(BASE / "Bookings.xlsx")
-print(f"  Rows: {len(df):,}   Columns: {df.shape[1]}")
-print(f"  Status distribution:\n{df['Booking_Status'].value_counts().to_string()}\n")
+# ── Realistic fare structure (Indian ride-hailing market) ─────────────────────
+# Each row: (base_fare, rate_per_km, min_fare)
+FARE_STRUCTURE = {
+    'Bike':        (20, 6,   40),
+    'eBike':       (15, 5,   35),
+    'Auto':        (30, 12,  60),
+    'Mini':        (50, 14,  80),
+    'Prime Sedan': (60, 16, 100),
+    'Prime Plus':  (70, 18, 120),
+    'Prime SUV':   (90, 22, 150),
+}
+VEHICLE_TYPES = list(FARE_STRUCTURE.keys())
 
-# ── 2. Feature Engineering ────────────────────────────────────────────────────
-df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-df['Hour']       = pd.to_datetime(df['Time'], format='%H:%M:%S', errors='coerce').dt.hour
-df['DayOfWeek']  = df['Date'].dt.dayofweek          # 0=Mon, 6=Sun
-df['IsWeekend']  = (df['DayOfWeek'] >= 5).astype(int)
-df['IsNight']    = ((df['Hour'] >= 22) | (df['Hour'] <= 5)).astype(int)
-df['IsPeakHour'] = df['Hour'].apply(lambda h: 1 if h in [7, 8, 9, 17, 18, 19, 20] else 0)
 
-# Encode Vehicle_Type with a fixed vocabulary
-VEHICLE_TYPES = ['Auto', 'Bike', 'eBike', 'Mini', 'Prime Plus', 'Prime Sedan', 'Prime SUV']
+def compute_fare(distance, vehicle, hour, day_of_week):
+    """Realistic fare formula with surge, peak hours, and noise."""
+    base, rate, min_fare = FARE_STRUCTURE[vehicle]
+    fare = base + rate * distance
+
+    # Peak-hour surge (morning/evening rush)
+    if hour in (7, 8, 9, 17, 18, 19, 20):
+        fare *= 1.25
+    # Late-night surge
+    if hour >= 22 or hour <= 4:
+        fare *= 1.30
+    # Weekend surge
+    if day_of_week >= 5:
+        fare *= 1.10
+
+    # Random noise (traffic, toll, driver variance) ±10%
+    fare *= RNG.uniform(0.90, 1.10)
+    return max(round(fare, 2), min_fare)
+
+
+# ── 1. Generate realistic training data ───────────────────────────────────────
+print("Generating training data from realistic fare model...")
+N = 60_000
+
+sim = pd.DataFrame({
+    'Ride_Distance':    RNG.uniform(1, 50, N).round(2),
+    'Vehicle_Type':     RNG.choice(VEHICLE_TYPES, N),
+    'Hour':             RNG.integers(0, 24, N),
+    'DayOfWeek':        RNG.integers(0, 7, N),
+})
+sim['Booking_Value'] = sim.apply(
+    lambda r: compute_fare(r['Ride_Distance'], r['Vehicle_Type'], r['Hour'], r['DayOfWeek']),
+    axis=1
+)
+sim['IsWeekend']  = (sim['DayOfWeek'] >= 5).astype(int)
+sim['IsNight']    = ((sim['Hour'] >= 22) | (sim['Hour'] <= 4)).astype(int)
+sim['IsPeakHour'] = sim['Hour'].apply(lambda h: 1 if h in (7, 8, 9, 17, 18, 19, 20) else 0)
+
 le_vehicle = LabelEncoder()
 le_vehicle.fit(VEHICLE_TYPES)
-df['Vehicle_Type_Enc'] = df['Vehicle_Type'].apply(
-    lambda x: int(le_vehicle.transform([x])[0]) if x in VEHICLE_TYPES else -1
-)
+sim['Vehicle_Type_Enc'] = le_vehicle.transform(sim['Vehicle_Type'])
 
-# Encode location fields
-le_pickup = LabelEncoder()
-le_drop   = LabelEncoder()
-df['Pickup_Enc'] = le_pickup.fit_transform(df['Pickup_Location'].fillna('Unknown'))
-df['Drop_Enc']   = le_drop.fit_transform(df['Drop_Location'].fillna('Unknown'))
+print(f"  Generated {len(sim):,} synthetic rides")
+print(f"  Fare range: Rs.{sim['Booking_Value'].min():.0f} - Rs.{sim['Booking_Value'].max():.0f}")
+print(f"  Mean fare:  Rs.{sim['Booking_Value'].mean():.0f}\n")
 
-df['Booking_Value']  = df['Booking_Value'].fillna(df['Booking_Value'].median())
-df['Ride_Distance']  = df['Ride_Distance'].fillna(0)
-df['Has_Distance']   = (df['Ride_Distance'] > 0).astype(int)
-
-# ── 3. Target Encoding ────────────────────────────────────────────────────────
-STATUS_MAP = {
-    'Success':              0,
-    'Canceled by Driver':   1,
-    'Canceled by Customer': 2,
-    'Driver Not Found':     3,
-}
-LABEL_NAMES = ['Success', 'Canceled by Driver', 'Canceled by Customer', 'Driver Not Found']
-
-df['Status_Label'] = df['Booking_Status'].map(STATUS_MAP)
-df = df.dropna(subset=['Status_Label'])
-df['Status_Label'] = df['Status_Label'].astype(int)
-
-# ── 4. Features & Target ──────────────────────────────────────────────────────
+# ── 2. Define features & target ───────────────────────────────────────────────
 FEATURES = [
-    'Vehicle_Type_Enc',
-    'Pickup_Enc',
-    'Drop_Enc',
-    'Booking_Value',
     'Ride_Distance',
-    'Has_Distance',
+    'Vehicle_Type_Enc',
     'Hour',
     'DayOfWeek',
     'IsWeekend',
@@ -81,98 +105,119 @@ FEATURES = [
     'IsPeakHour',
 ]
 
-X = df[FEATURES]
-y = df['Status_Label']
+X = sim[FEATURES]
+y = sim['Booking_Value']
 
-print(f"Dataset ready: {X.shape[0]:,} rows, {X.shape[1]} features")
-
-# ── 5. Train / Test Split ─────────────────────────────────────────────────────
+# ── 3. Train / Test split ─────────────────────────────────────────────────────
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+    X, y, test_size=0.2, random_state=42
 )
 
-# ── 6. Train ──────────────────────────────────────────────────────────────────
-# Note: no class balancing — we let the model learn the natural class
-# distribution, which gives the best accuracy on this synthetic dataset.
-print("Training XGBoost Classifier...")
-model = XGBClassifier(
+# ── 4. Train XGBoost Regressor ────────────────────────────────────────────────
+print("Training XGBoost Regressor...")
+model = XGBRegressor(
     n_estimators=500,
-    max_depth=8,
+    max_depth=7,
     learning_rate=0.05,
     subsample=0.85,
     colsample_bytree=0.85,
-    min_child_weight=2,
+    min_child_weight=3,
     reg_alpha=0.1,
     reg_lambda=1.0,
     random_state=42,
     n_jobs=-1,
-    eval_metric='mlogloss',
+    objective='reg:squarederror',
 )
 model.fit(X_train, y_train)
 
-# ── 7. Evaluate ───────────────────────────────────────────────────────────────
+# ── 5. Evaluate ───────────────────────────────────────────────────────────────
 y_pred = model.predict(X_test)
+mae  = mean_absolute_error(y_test, y_pred)
+rmse = mean_squared_error(y_test, y_pred) ** 0.5
+r2   = r2_score(y_test, y_pred)
 
-acc    = accuracy_score(y_test, y_pred)
-f1_mac = f1_score(y_test, y_pred, average='macro')
-f1_wt  = f1_score(y_test, y_pred, average='weighted')
-
-# Baseline: always predict majority class
-baseline_acc = (y_test == 0).mean()
+# Baseline: always predict the mean fare
+baseline_pred = [y_train.mean()] * len(y_test)
+baseline_mae  = mean_absolute_error(y_test, baseline_pred)
 
 print("\n" + "=" * 55)
-print("           MODEL EVALUATION RESULTS")
+print("        FARE REGRESSION RESULTS")
 print("=" * 55)
-print(f"  Accuracy              : {acc:.4f}  ({acc*100:.1f}%)")
-print(f"  Baseline (majority)   : {baseline_acc:.4f}  ({baseline_acc*100:.1f}%)")
-print(f"  Lift over baseline    : +{(acc - baseline_acc)*100:.1f}%")
-print(f"  F1 Score (Macro)      : {f1_mac:.4f}")
-print(f"  F1 Score (Weighted)   : {f1_wt:.4f}")
-print("=" * 55)
-print("  NOTE: This dataset is synthetic — feature values are")
-print("  uniformly distributed across all booking statuses.")
-print("  A real-world dataset would yield 80-90%+ accuracy.")
+print(f"  MAE   (Mean Absolute Error)  : Rs. {mae:>7.2f}")
+print(f"  RMSE  (Root Mean Sq. Error)  : Rs. {rmse:>7.2f}")
+print(f"  R2    (variance explained)   : {r2:>7.4f}  ({r2*100:.1f}%)")
+print(f"  Baseline MAE (predict mean)  : Rs. {baseline_mae:>7.2f}")
+print(f"  Improvement over baseline    : Rs. {baseline_mae - mae:>7.2f}")
 print("=" * 55)
 
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=LABEL_NAMES))
-
-print("Confusion Matrix:")
-cm_df = pd.DataFrame(
-    confusion_matrix(y_test, y_pred),
-    index=LABEL_NAMES,
-    columns=LABEL_NAMES
-)
-print(cm_df)
+if r2 >= 0.85:
+    print("  [EXCELLENT] Model explains >85% of fare variance")
+elif r2 >= 0.60:
+    print("  [GOOD] Model explains 60-85% of fare variance")
+elif r2 >= 0.30:
+    print("  [FAIR] Model explains 30-60% of fare variance")
+else:
+    print("  [POOR] Model cannot predict fare well")
+print("=" * 55)
 
 print("\nFeature Importances:")
 fi = pd.Series(model.feature_importances_, index=FEATURES).sort_values(ascending=False)
 for feat, score in fi.items():
-    bar = "#" * int(score * 40)
+    bar = "#" * int(score * 60)
     print(f"  {feat:<20} {bar}  {score:.4f}")
 
-# ── 8. Save artifacts ─────────────────────────────────────────────────────────
+# ── 6. Sanity check — show a few real predictions ─────────────────────────────
+print("\nSample predictions:")
+samples = [
+    (5,  'Bike',        9,  1),
+    (20, 'Auto',        14, 2),
+    (35, 'Prime Sedan', 18, 4),
+    (50, 'Prime SUV',   23, 5),
+]
+for dist, veh, hr, dow in samples:
+    vt_enc = int(le_vehicle.transform([veh])[0])
+    is_w = 1 if dow >= 5 else 0
+    is_n = 1 if (hr >= 22 or hr <= 4) else 0
+    is_p = 1 if hr in (7, 8, 9, 17, 18, 19, 20) else 0
+    row = pd.DataFrame([{
+        'Ride_Distance': dist, 'Vehicle_Type_Enc': vt_enc, 'Hour': hr,
+        'DayOfWeek': dow, 'IsWeekend': is_w, 'IsNight': is_n, 'IsPeakHour': is_p,
+    }])
+    pred = model.predict(row)[0]
+    print(f"  {dist:>2}km  {veh:<12} {hr:02d}:00 -> Rs. {pred:>7.2f}")
+
+# ── 7. Save artifacts ─────────────────────────────────────────────────────────
 joblib.dump(model,       BASE / "xgb_model.pkl")
 joblib.dump(le_vehicle,  BASE / "le_vehicle.pkl")
-joblib.dump(le_pickup,   BASE / "le_pickup.pkl")
-joblib.dump(le_drop,     BASE / "le_drop.pkl")
 joblib.dump(FEATURES,    BASE / "features.pkl")
-joblib.dump(LABEL_NAMES, BASE / "label_names.pkl")
+joblib.dump(VEHICLE_TYPES, BASE / "vehicle_types.pkl")
 print("\nModel artifacts saved.")
 
-# ── 9. Save predictions CSV ───────────────────────────────────────────────────
+# ── 8. Save predictions CSV (test set) ────────────────────────────────────────
 results = X_test.copy()
-results['Actual_Status']    = y_test.values
-results['Predicted_Status'] = y_pred
-results['Actual_Label']     = [LABEL_NAMES[i] for i in y_test.values]
-results['Predicted_Label']  = [LABEL_NAMES[i] for i in y_pred]
-results['Correct']          = (results['Actual_Status'] == results['Predicted_Status']).astype(int)
+results['Vehicle_Type']   = le_vehicle.inverse_transform(results['Vehicle_Type_Enc'].astype(int))
+results['Actual_Fare']    = y_test.values.round(2)
+results['Predicted_Fare'] = y_pred.round(2)
+results['Error']          = (results['Actual_Fare'] - results['Predicted_Fare']).round(2)
+results['Abs_Error']      = results['Error'].abs()
 results.to_csv(BASE / "predictions.csv", index=False)
-print("Predictions saved -> predictions.csv")
+print("Test predictions saved -> predictions.csv")
 
-# ── 10. Save full dataset for Streamlit analytics ─────────────────────────────
-df_save = df[['Date', 'Hour', 'DayOfWeek', 'IsWeekend', 'IsNight', 'IsPeakHour',
-              'Vehicle_Type', 'Booking_Value', 'Ride_Distance',
-              'Driver_Ratings', 'Customer_Rating', 'Booking_Status']].copy()
+# ── 9. Save cleaned data from REAL dataset for dashboard analytics ────────────
+print("\nLoading real dataset for dashboard analytics...")
+real = pd.read_excel(BASE / "Bookings.xlsx")
+real['Date'] = pd.to_datetime(real['Date'], errors='coerce')
+real['Hour'] = pd.to_datetime(real['Time'], format='%H:%M:%S', errors='coerce').dt.hour
+real['DayOfWeek']  = real['Date'].dt.dayofweek
+real['IsWeekend']  = (real['DayOfWeek'] >= 5).astype(int)
+real['IsNight']    = ((real['Hour'] >= 22) | (real['Hour'] <= 5)).astype(int)
+real['IsPeakHour'] = real['Hour'].apply(lambda h: 1 if h in (7, 8, 9, 17, 18, 19, 20) else 0)
+real['Driver_Ratings']  = real['Driver_Ratings'].fillna(real['Driver_Ratings'].median())
+real['Customer_Rating'] = real['Customer_Rating'].fillna(real['Customer_Rating'].median())
+real['Ride_Distance']   = real['Ride_Distance'].fillna(0)
+
+df_save = real[['Date', 'Hour', 'DayOfWeek', 'IsWeekend', 'IsNight', 'IsPeakHour',
+                'Vehicle_Type', 'Booking_Value', 'Ride_Distance',
+                'Driver_Ratings', 'Customer_Rating', 'Booking_Status']].copy()
 df_save.to_csv(BASE / "cleaned_data.csv", index=False)
 print("Cleaned data saved -> cleaned_data.csv")
