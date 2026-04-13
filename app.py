@@ -390,7 +390,7 @@ with tab_predict:
                          margin=dict(t=10, b=30, l=45, r=15))
             st.plotly_chart(fig, use_container_width=True)
 
-        # ── Vehicle comparison table below ───────────────────────────────────
+        # ── Vehicle comparison chart below ───────────────────────────────────
         compare_rows = []
         for vt in VEHICLE_TYPES:
             vt_code = int(le_vehicle.transform([vt])[0])
@@ -405,23 +405,39 @@ with tab_predict:
             }])
             compare_rows.append({
                 'Vehicle': vt,
-                'Fare':    round(float(model.predict(row)[0]), 0),
+                'Fare':    float(model.predict(row)[0]),
             })
         cmp_df = pd.DataFrame(compare_rows).sort_values('Fare').reset_index(drop=True)
-        cmp_df['Fare'] = cmp_df['Fare'].apply(lambda x: f"Rs. {x:,.0f}")
+
+        # Highlight the selected vehicle, everything else stays muted
+        bar_colors = [TEXT if v == vehicle_type else BORDER for v in cmp_df['Vehicle']]
+        text_colors = [TEXT if v == vehicle_type else MUTED for v in cmp_df['Vehicle']]
 
         st.markdown(f"""
-        <div style="font-size:11px; color:{MUTED}; margin:18px 0 6px 0;">
+        <div style="font-size:11px; color:{MUTED}; margin:18px 0 4px 0;">
             Same ride across all vehicle types
         </div>
         """, unsafe_allow_html=True)
-        st.dataframe(
-            cmp_df, use_container_width=True, hide_index=True,
-            column_config={
-                "Vehicle": st.column_config.TextColumn("Vehicle"),
-                "Fare":    st.column_config.TextColumn("Fare"),
-            }
+
+        fig_cmp = go.Figure(go.Bar(
+            x=cmp_df['Fare'], y=cmp_df['Vehicle'], orientation='h',
+            marker=dict(color=bar_colors),
+            text=[f"Rs. {f:,.0f}" for f in cmp_df['Fare']],
+            textposition='outside',
+            textfont=dict(size=10, color=text_colors),
+            hovertemplate='%{y}: Rs. %{x:,.0f}<extra></extra>',
+        ))
+        apply_layout(fig_cmp, "",
+                     showlegend=False, height=230,
+                     margin=dict(t=10, b=25, l=90, r=60),
+                     xaxis_title="Fare (Rs.)")
+        # Make room for the outside text labels
+        fig_cmp.update_xaxes(
+            range=[0, cmp_df['Fare'].max() * 1.18],
+            showgrid=True, gridcolor=BORDER,
         )
+        fig_cmp.update_yaxes(showgrid=False)
+        st.plotly_chart(fig_cmp, use_container_width=True)
     else:
         st.markdown(f"""
         <div style="color:{MUTED}; font-size:13px; padding:24px 0;">
