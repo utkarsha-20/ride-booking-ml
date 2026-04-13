@@ -290,12 +290,30 @@ with tab_predict:
     st.markdown(f"<hr style='border:none; border-top:1px solid {BORDER}; margin:12px 0 14px 0;'/>",
                 unsafe_allow_html=True)
 
+    # Per-vehicle color palette — each vehicle gets its own identity.
+    # Twilight Mist inspired: soft purples, warm orange, dusty pink, teal, gold
+    VEHICLE_COLORS = {
+        'Bike':        '#7aa2f7',   # soft blue
+        'eBike':       '#9ece6a',   # sage green
+        'Auto':        '#ff9e64',   # warm orange
+        'Mini':        '#e0af68',   # dusty gold
+        'Prime Sedan': '#bb9af7',   # lavender
+        'Prime Plus':  '#f7768e',   # dusty pink
+        'Prime SUV':   '#9d7cd8',   # deeper purple
+    }
+    SURGE_COLORS = {
+        'peak hour':  '#ff9e64',   # warm orange
+        'late night': '#bb9af7',   # lavender
+        'weekend':    '#9ece6a',   # sage green
+    }
+
     if predict_btn:
         is_weekend = 1 if dow >= 5 else 0
         is_night   = 1 if (hour >= 22 or hour <= 4) else 0
         is_peak    = 1 if hour in (7, 8, 9, 17, 18, 19, 20) else 0
 
         vt_enc = int(le_vehicle.transform([vehicle_type])[0])
+        accent = VEHICLE_COLORS.get(vehicle_type, PURPLE)
 
         input_df = pd.DataFrame([{
             'Ride_Distance':    distance,
@@ -309,31 +327,45 @@ with tab_predict:
 
         predicted_fare = float(model.predict(input_df)[0])
 
-        # Left side: definition-list style result.
-        # Right side: fare curve chart.
+        # Left side: result.  Right side: fare curve chart.
         left, right = st.columns([1, 1.6])
 
         with left:
-            surge_parts = []
-            if is_peak:    surge_parts.append("peak hour")
-            if is_night:   surge_parts.append("late night")
-            if is_weekend: surge_parts.append("weekend")
-            surge_text = ", ".join(surge_parts) if surge_parts else "none"
+            # Surge badges (only shown for active ones)
+            surge_badges_html = ""
+            active_surges = []
+            if is_peak:    active_surges.append('peak hour')
+            if is_night:   active_surges.append('late night')
+            if is_weekend: active_surges.append('weekend')
+
+            if active_surges:
+                badges = []
+                for s in active_surges:
+                    c = SURGE_COLORS[s]
+                    badges.append(
+                        f'<span style="display:inline-block; font-size:11px; '
+                        f'color:{c}; border:1px solid {c}; border-radius:4px; '
+                        f'padding:2px 8px; margin-right:6px;">{s}</span>'
+                    )
+                surge_badges_html = "".join(badges)
+            else:
+                surge_badges_html = f'<span style="font-size:12px; color:{MUTED};">no surge</span>'
 
             st.markdown(f"""
-            <div style="display:flex; align-items:baseline; gap:8px;
-                        padding-bottom:12px; border-bottom:1px solid {BORDER};
+            <div style="padding-bottom:12px; border-bottom:1px solid {BORDER};
                         margin-bottom:12px;">
-                <span style="font-size:13px; color:{MUTED};">Fare</span>
-                <span style="font-size:26px; font-weight:600; color:{PURPLE}; line-height:1;">
+                <div style="font-size:12px; color:{MUTED}; margin-bottom:4px;">Fare</div>
+                <div style="font-size:32px; font-weight:600; color:{accent}; line-height:1;">
                     Rs. {predicted_fare:,.0f}
-                </span>
+                </div>
             </div>
 
             <table style="width:100%; border-collapse:collapse; font-size:13px; color:{TEXT};">
                 <tr>
                     <td style="padding:6px 0; color:{MUTED}; width:42%;">Vehicle</td>
-                    <td style="padding:6px 0;">{vehicle_type}</td>
+                    <td style="padding:6px 0; color:{accent}; font-weight:500;">
+                        {vehicle_type}
+                    </td>
                 </tr>
                 <tr>
                     <td style="padding:6px 0; color:{MUTED};
@@ -348,9 +380,11 @@ with tab_predict:
                     </td>
                 </tr>
                 <tr>
-                    <td style="padding:6px 0; color:{MUTED};
-                               border-top:1px solid {BORDER};">Surge</td>
-                    <td style="padding:6px 0; border-top:1px solid {BORDER};">{surge_text}</td>
+                    <td style="padding:10px 0 0 0; color:{MUTED};
+                               border-top:1px solid {BORDER}; vertical-align:top;">Surge</td>
+                    <td style="padding:10px 0 0 0; border-top:1px solid {BORDER};">
+                        {surge_badges_html}
+                    </td>
                 </tr>
             </table>
             """, unsafe_allow_html=True)
@@ -371,18 +405,23 @@ with tab_predict:
                 curve_rows.append({'Distance': d, 'Fare': float(model.predict(row)[0])})
             curve_df = pd.DataFrame(curve_rows)
 
+            # Convert the accent hex to rgba for the fill
+            h = accent.lstrip('#')
+            r_, g_, b_ = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            accent_fill = f'rgba({r_}, {g_}, {b_}, 0.12)'
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=curve_df['Distance'], y=curve_df['Fare'],
                 mode='lines',
-                line=dict(color=PURPLE, width=2),
+                line=dict(color=accent, width=2.5),
                 fill='tozeroy',
-                fillcolor='rgba(188, 140, 255, 0.08)',
+                fillcolor=accent_fill,
             ))
             fig.add_trace(go.Scatter(
                 x=[distance], y=[predicted_fare],
                 mode='markers',
-                marker=dict(color=PURPLE, size=10, line=dict(color=BG, width=2)),
+                marker=dict(color=accent, size=12, line=dict(color=BG, width=2)),
                 showlegend=False,
             ))
             apply_layout(fig, "",
@@ -411,10 +450,9 @@ with tab_predict:
             })
         cmp_df = pd.DataFrame(compare_rows).sort_values('Fare').reset_index(drop=True)
 
-        # Highlight the selected vehicle in the accent color; others in a
-        # visible but secondary gray (not the border color)
-        bar_colors = [PURPLE if v == vehicle_type else '#4b5563' for v in cmp_df['Vehicle']]
-        text_colors = [PURPLE if v == vehicle_type else MUTED for v in cmp_df['Vehicle']]
+        # Each vehicle uses its own color; text for the selected vehicle is bold.
+        bar_colors  = [VEHICLE_COLORS[v] for v in cmp_df['Vehicle']]
+        text_colors = [VEHICLE_COLORS[v] for v in cmp_df['Vehicle']]
 
         st.markdown(f"""
         <div style="font-size:11px; color:{MUTED}; margin:18px 0 4px 0;">
@@ -427,14 +465,14 @@ with tab_predict:
             marker=dict(color=bar_colors),
             text=[f"Rs. {f:,.0f}" for f in cmp_df['Fare']],
             textposition='outside',
-            textfont=dict(size=10, color=text_colors),
+            textfont=dict(size=11, color=text_colors),
             hovertemplate='%{y}: Rs. %{x:,.0f}<extra></extra>',
         ))
         apply_layout(fig_cmp, "",
-                     showlegend=False, height=230,
+                     showlegend=False, height=240,
                      margin=dict(t=10, b=25, l=90, r=60),
                      xaxis_title="Fare (Rs.)")
-        # Make room for the outside text labels
+        # Make room for outside text labels
         fig_cmp.update_xaxes(
             range=[0, cmp_df['Fare'].max() * 1.18],
             showgrid=True, gridcolor=BORDER,
