@@ -579,9 +579,14 @@ with tab4:
         pk_enc = int(le_pickup.transform([pickup_loc])[0])
         dr_enc = int(le_drop.transform([drop_loc])[0])
 
+        # Default ride distance to dataset median for successful rides;
+        # Has_Distance flag indicates a normally-completed trip
+        median_dist = float(df[df['Booking_Status'] == 'Success']['Ride_Distance'].median())
+
         input_df = pd.DataFrame([{
             'Vehicle_Type_Enc': vt_enc, 'Pickup_Enc': pk_enc,
             'Drop_Enc': dr_enc, 'Booking_Value': booking_value,
+            'Ride_Distance': median_dist, 'Has_Distance': 1,
             'Hour': hour, 'DayOfWeek': dow, 'IsWeekend': is_weekend,
             'IsNight': is_night, 'IsPeakHour': is_peak,
         }])

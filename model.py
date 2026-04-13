@@ -49,7 +49,9 @@ le_drop   = LabelEncoder()
 df['Pickup_Enc'] = le_pickup.fit_transform(df['Pickup_Location'].fillna('Unknown'))
 df['Drop_Enc']   = le_drop.fit_transform(df['Drop_Location'].fillna('Unknown'))
 
-df['Booking_Value'] = df['Booking_Value'].fillna(df['Booking_Value'].median())
+df['Booking_Value']  = df['Booking_Value'].fillna(df['Booking_Value'].median())
+df['Ride_Distance']  = df['Ride_Distance'].fillna(0)
+df['Has_Distance']   = (df['Ride_Distance'] > 0).astype(int)
 
 # ── 3. Target Encoding ────────────────────────────────────────────────────────
 STATUS_MAP = {
@@ -70,6 +72,8 @@ FEATURES = [
     'Pickup_Enc',
     'Drop_Enc',
     'Booking_Value',
+    'Ride_Distance',
+    'Has_Distance',
     'Hour',
     'DayOfWeek',
     'IsWeekend',
