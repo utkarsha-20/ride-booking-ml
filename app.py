@@ -6,7 +6,6 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 import joblib
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -204,327 +203,13 @@ def apply_layout(fig, title="", **overrides):
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Analytics", "Model", "Predict"])
+tab_predict, tab_insights = st.tabs(["Predict", "Insights"])
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# TAB 1: OVERVIEW
+# TAB 1: PREDICT — Fare calculator
 # ═════════════════════════════════════════════════════════════════════════════
-with tab1:
-    total       = len(df)
-    success     = (df['Booking_Status'] == 'Success').sum()
-    canceled_d  = (df['Booking_Status'] == 'Canceled by Driver').sum()
-    canceled_c  = (df['Booking_Status'] == 'Canceled by Customer').sum()
-    not_found   = (df['Booking_Status'] == 'Driver Not Found').sum()
-    avg_fare    = df[df['Booking_Status'] == 'Success']['Booking_Value'].mean()
-    avg_dist    = df[df['Booking_Status'] == 'Success']['Ride_Distance'].mean()
-
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("Total",       f"{total:,}")
-    m2.metric("Success",     f"{success:,}")
-    m3.metric("Canc. (Drv)", f"{canceled_d:,}")
-    m4.metric("Canc. (Cust)",f"{canceled_c:,}")
-    m5.metric("Avg Fare",    f"Rs.{avg_fare:.0f}")
-    m6.metric("Avg Distance",f"{avg_dist:.1f} km")
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        status_counts = df['Booking_Status'].value_counts().reset_index()
-        status_counts.columns = ['Status', 'Count']
-        fig = px.pie(
-            status_counts, names='Status', values='Count',
-            color='Status', color_discrete_map=STATUS_COLORS, hole=0.5,
-        )
-        fig.update_traces(textinfo='percent', textfont_size=9)
-        apply_layout(fig, "Status distribution",
-                     legend=dict(font=dict(size=8), orientation='h', y=-0.08))
-        st.plotly_chart(fig, use_container_width=True)
-
-    with c2:
-        vt_status = df.groupby(['Vehicle_Type', 'Booking_Status']).size().reset_index(name='Count')
-        fig2 = px.bar(
-            vt_status, x='Vehicle_Type', y='Count', color='Booking_Status',
-            color_discrete_map=STATUS_COLORS, barmode='stack',
-        )
-        apply_layout(fig2, "Bookings by vehicle",
-                     legend=dict(font=dict(size=8), orientation='h', y=-0.12),
-                     xaxis_tickangle=-30)
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with c3:
-        succ_rate = (
-            df.groupby('Vehicle_Type')['Booking_Status']
-            .apply(lambda x: (x == 'Success').mean() * 100)
-            .reset_index()
-        )
-        succ_rate.columns = ['Vehicle_Type', 'Rate']
-        succ_rate = succ_rate.sort_values('Rate', ascending=True)
-        fig3 = px.bar(
-            succ_rate, x='Rate', y='Vehicle_Type', orientation='h',
-            color='Rate', color_continuous_scale=[[0, RED], [0.5, ORANGE], [1, GREEN]],
-            text=succ_rate['Rate'].apply(lambda x: f"{x:.1f}%"),
-            range_x=[58, 66],
-        )
-        fig3.update_traces(textposition='outside', textfont_size=9)
-        apply_layout(fig3, "Success rate", coloraxis_showscale=False)
-        st.plotly_chart(fig3, use_container_width=True)
-
-    c4, c5, c6 = st.columns(3)
-
-    with c4:
-        hourly = df.groupby('Hour')['Booking_Status'].apply(
-            lambda x: (x == 'Success').mean() * 100
-        ).reset_index()
-        hourly.columns = ['Hour', 'Rate']
-        fig4 = px.area(hourly, x='Hour', y='Rate', color_discrete_sequence=[PRIMARY])
-        apply_layout(fig4, "Success rate by hour", xaxis=dict(dtick=4))
-        st.plotly_chart(fig4, use_container_width=True)
-
-    with c5:
-        day_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
-        daily = df.groupby('DayOfWeek').size().reset_index(name='Bookings')
-        daily['Day'] = daily['DayOfWeek'].map(day_map)
-        fig5 = px.bar(
-            daily, x='Day', y='Bookings', color='Bookings',
-            color_continuous_scale=[[0, SURFACE], [1, PRIMARY]],
-            category_orders={'Day': list(day_map.values())},
-        )
-        apply_layout(fig5, "Bookings by day", coloraxis_showscale=False)
-        st.plotly_chart(fig5, use_container_width=True)
-
-    with c6:
-        df_s = df[df['Booking_Status'] == 'Success']
-        df_s = df_s[df_s['Ride_Distance'] > 0].copy()
-        df_s['Dist_Bin'] = pd.cut(
-            df_s['Ride_Distance'],
-            bins=[0, 10, 20, 30, 50], labels=['0-10km', '10-20km', '20-30km', '30-50km']
-        )
-        dist_vt = df_s.groupby(['Dist_Bin', 'Vehicle_Type'], observed=True).size().reset_index(name='Count')
-        fig6 = px.sunburst(
-            dist_vt, path=['Dist_Bin', 'Vehicle_Type'], values='Count',
-            color='Count', color_continuous_scale=[[0, SURFACE], [1, PRIMARY]],
-        )
-        apply_layout(fig6, "Distance x vehicle",
-                     margin=dict(t=28, b=5, l=5, r=5), coloraxis_showscale=False)
-        st.plotly_chart(fig6, use_container_width=True)
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# TAB 2: ANALYTICS
-# ═════════════════════════════════════════════════════════════════════════════
-with tab2:
-    df_success = df[df['Booking_Status'] == 'Success']
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        hourly = df.groupby(['Hour', 'Booking_Status']).size().reset_index(name='Count')
-        fig = px.bar(
-            hourly, x='Hour', y='Count', color='Booking_Status',
-            color_discrete_map=STATUS_COLORS, barmode='stack',
-        )
-        apply_layout(fig, "Hourly pattern",
-                     legend=dict(font=dict(size=7), orientation='h', y=-0.15),
-                     xaxis=dict(dtick=4))
-        st.plotly_chart(fig, use_container_width=True)
-
-    with c2:
-        fig2 = px.box(
-            df_success, x='Vehicle_Type', y='Booking_Value',
-            color='Vehicle_Type',
-            color_discrete_sequence=[PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT],
-            points=False,
-        )
-        apply_layout(fig2, "Fare by vehicle", showlegend=False, xaxis_tickangle=-30)
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with c3:
-        sample = df_success.sample(min(2500, len(df_success)), random_state=42)
-        fig3 = px.scatter(
-            sample, x='Ride_Distance', y='Booking_Value',
-            color='Vehicle_Type', opacity=0.4,
-            color_discrete_sequence=[PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT],
-        )
-        fig3.update_traces(marker_size=2)
-        apply_layout(fig3, "Distance vs fare",
-                     legend=dict(font=dict(size=7), orientation='h', y=-0.15))
-        st.plotly_chart(fig3, use_container_width=True)
-
-    c4, c5, c6 = st.columns(3)
-
-    with c4:
-        fig4 = px.histogram(
-            df_success, x='Booking_Value', nbins=50,
-            color_discrete_sequence=[PRIMARY],
-        )
-        apply_layout(fig4, "Fare distribution")
-        st.plotly_chart(fig4, use_container_width=True)
-
-    with c5:
-        df_dist = df_success[df_success['Ride_Distance'] > 0]
-        fig5 = px.histogram(
-            df_dist, x='Ride_Distance', nbins=40,
-            color_discrete_sequence=[PURPLE],
-        )
-        apply_layout(fig5, "Distance distribution")
-        st.plotly_chart(fig5, use_container_width=True)
-
-    with c6:
-        vt_stats = df_success.groupby('Vehicle_Type').agg(
-            Fare=('Booking_Value', 'mean'),
-            Dist=('Ride_Distance', 'mean'),
-            DrvR=('Driver_Ratings', 'mean'),
-            CustR=('Customer_Rating', 'mean'),
-        ).reset_index()
-        for c in ['Fare', 'Dist', 'DrvR', 'CustR']:
-            vt_stats[c] = (vt_stats[c] - vt_stats[c].min()) / (vt_stats[c].max() - vt_stats[c].min() + 1e-9)
-        fig6 = go.Figure()
-        cats = ['Fare', 'Distance', 'Driver Rating', 'Customer Rating']
-        colors = [PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT]
-        for i, (_, row) in enumerate(vt_stats.iterrows()):
-            vals = [row['Fare'], row['Dist'], row['DrvR'], row['CustR']]
-            fig6.add_trace(go.Scatterpolar(
-                r=vals + [vals[0]], theta=cats + [cats[0]],
-                name=row['Vehicle_Type'], fill='toself', opacity=0.4,
-                line=dict(color=colors[i % len(colors)]),
-            ))
-        apply_layout(fig6, "Vehicle comparison",
-                     polar=dict(
-                         radialaxis=dict(visible=False),
-                         bgcolor='rgba(0,0,0,0)',
-                     ),
-                     legend=dict(font=dict(size=7), orientation='h', y=-0.2),
-                     margin=dict(t=28, b=20, l=50, r=50))
-        st.plotly_chart(fig6, use_container_width=True)
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# TAB 3: MODEL
-# ═════════════════════════════════════════════════════════════════════════════
-with tab3:
-    y_actual = pred['Actual_Fare']
-    y_pred_vals = pred['Predicted_Fare']
-
-    mae  = (y_actual - y_pred_vals).abs().mean()
-    rmse = ((y_actual - y_pred_vals) ** 2).mean() ** 0.5
-    r2   = 1 - ((y_actual - y_pred_vals) ** 2).sum() / ((y_actual - y_actual.mean()) ** 2).sum()
-    mean_fare = y_actual.mean()
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("R squared",    f"{r2:.3f}")
-    m2.metric("MAE",          f"Rs. {mae:.1f}")
-    m3.metric("RMSE",         f"Rs. {rmse:.1f}")
-    m4.metric("Mean fare",    f"Rs. {mean_fare:.0f}")
-
-    st.info(
-        "Model trained on simulated ride fares generated from a realistic pricing formula "
-        "(base fare + per-km rate + surge pricing). The real Bookings.xlsx dataset is used "
-        "throughout the Overview and Analytics tabs."
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        # Actual vs predicted scatter
-        sample = pred.sample(min(3000, len(pred)), random_state=42)
-        fig = px.scatter(
-            sample, x='Actual_Fare', y='Predicted_Fare',
-            color='Vehicle_Type', opacity=0.5,
-            color_discrete_sequence=[PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT],
-        )
-        fig.add_trace(go.Scatter(
-            x=[0, y_actual.max()], y=[0, y_actual.max()],
-            mode='lines', line=dict(color=MUTED, dash='dash', width=1),
-            showlegend=False, hoverinfo='skip',
-        ))
-        fig.update_traces(marker_size=3, selector=dict(mode='markers'))
-        apply_layout(fig, "Actual vs predicted fare",
-                     legend=dict(font=dict(size=7), orientation='h', y=-0.18),
-                     height=CH + 20)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with c2:
-        fi = pd.Series(model.feature_importances_, index=features).sort_values(ascending=True)
-        fig2 = px.bar(
-            fi.reset_index(), x=0, y='index', orientation='h',
-            color=0, color_continuous_scale=[[0, SURFACE], [1, GREEN]],
-            labels={'index': '', 0: ''},
-        )
-        apply_layout(fig2, "Feature importances",
-                     coloraxis_showscale=False, height=CH + 20)
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with c3:
-        # Residual (error) distribution
-        residuals = y_actual - y_pred_vals
-        fig3 = px.histogram(
-            residuals, nbins=50,
-            color_discrete_sequence=[PRIMARY],
-        )
-        apply_layout(fig3, "Residual distribution",
-                     xaxis_title="Error (Rs.)", height=CH + 20, showlegend=False)
-        st.plotly_chart(fig3, use_container_width=True)
-
-    c4, c5, c6 = st.columns(3)
-
-    with c4:
-        # Error by vehicle type
-        pred_copy = pred.copy()
-        pred_copy['Abs_Error'] = (pred_copy['Actual_Fare'] - pred_copy['Predicted_Fare']).abs()
-        err_by_vehicle = pred_copy.groupby('Vehicle_Type')['Abs_Error'].mean().reset_index()
-        err_by_vehicle = err_by_vehicle.sort_values('Abs_Error', ascending=True)
-        fig4 = px.bar(
-            err_by_vehicle, x='Abs_Error', y='Vehicle_Type',
-            orientation='h',
-            color='Abs_Error',
-            color_continuous_scale=[[0, GREEN], [1, ORANGE]],
-            text=err_by_vehicle['Abs_Error'].apply(lambda x: f"Rs.{x:.0f}"),
-        )
-        fig4.update_traces(textposition='outside', textfont_size=9)
-        apply_layout(fig4, "MAE by vehicle type",
-                     coloraxis_showscale=False, height=CH)
-        st.plotly_chart(fig4, use_container_width=True)
-
-    with c5:
-        # Predicted fare by distance (line chart showing the model's learned relationship)
-        line_df = pred.copy()
-        line_df['Dist_Bin'] = pd.cut(line_df['Ride_Distance'], bins=20)
-        line_agg = line_df.groupby(['Dist_Bin', 'Vehicle_Type'], observed=True)['Predicted_Fare'].mean().reset_index()
-        line_agg['Dist_Mid'] = line_agg['Dist_Bin'].apply(lambda x: x.mid)
-        fig5 = px.line(
-            line_agg, x='Dist_Mid', y='Predicted_Fare', color='Vehicle_Type',
-            color_discrete_sequence=[PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT],
-        )
-        apply_layout(fig5, "Predicted fare vs distance",
-                     xaxis_title="Distance (km)", yaxis_title="Fare (Rs.)",
-                     legend=dict(font=dict(size=7), orientation='h', y=-0.18),
-                     height=CH)
-        st.plotly_chart(fig5, use_container_width=True)
-
-    with c6:
-        # Percentage error distribution
-        pct_err = ((y_actual - y_pred_vals) / y_actual * 100).abs()
-        bins_data = pd.cut(pct_err, bins=[0, 5, 10, 20, 50, 100]).value_counts().sort_index()
-        bin_df = pd.DataFrame({
-            'Range': ['<5%', '5-10%', '10-20%', '20-50%', '>50%'],
-            'Count': bins_data.values,
-        })
-        fig6 = px.pie(
-            bin_df, names='Range', values='Count',
-            color_discrete_sequence=[GREEN, PRIMARY, ORANGE, RED, PURPLE],
-            hole=0.45,
-        )
-        fig6.update_traces(textinfo='percent', textfont_size=9)
-        apply_layout(fig6, "Error % buckets",
-                     legend=dict(font=dict(size=8)))
-        st.plotly_chart(fig6, use_container_width=True)
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# TAB 4: PREDICT — Fare calculator
-# ═════════════════════════════════════════════════════════════════════════════
-with tab4:
+with tab_predict:
     # Inline form — all inputs across one row
     f1, f2, f3, f4, f5 = st.columns([1.3, 1.3, 1, 1.3, 0.7])
     with f1:
@@ -721,3 +406,119 @@ with tab4:
             Choose a vehicle, distance, hour, and day &mdash; then click <b>Predict</b>.
         </div>
         """, unsafe_allow_html=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TAB 2: INSIGHTS — dataset summary + model performance
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_insights:
+    # ── KPI metrics: 3 dataset stats + 3 model stats ──────────────────────────
+    total_rides = len(df)
+    avg_fare    = df[df['Booking_Status'] == 'Success']['Booking_Value'].mean()
+    avg_dist    = df[df['Booking_Status'] == 'Success']['Ride_Distance'].mean()
+
+    y_actual    = pred['Actual_Fare']
+    y_predicted = pred['Predicted_Fare']
+    mae  = (y_actual - y_predicted).abs().mean()
+    rmse = ((y_actual - y_predicted) ** 2).mean() ** 0.5
+    r2   = 1 - ((y_actual - y_predicted) ** 2).sum() / ((y_actual - y_actual.mean()) ** 2).sum()
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("Total rides",  f"{total_rides:,}")
+    m2.metric("Avg fare",     f"Rs. {avg_fare:.0f}")
+    m3.metric("Avg distance", f"{avg_dist:.1f} km")
+    m4.metric("Model R\u00b2", f"{r2:.3f}")
+    m5.metric("MAE",          f"Rs. {mae:.1f}")
+    m6.metric("RMSE",         f"Rs. {rmse:.1f}")
+
+    # ── Row 1: dataset charts ─────────────────────────────────────────────────
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        # Booking status distribution (real dataset)
+        status_counts = df['Booking_Status'].value_counts().reset_index()
+        status_counts.columns = ['Status', 'Count']
+        fig = go.Figure(go.Pie(
+            labels=status_counts['Status'], values=status_counts['Count'],
+            hole=0.5,
+            marker=dict(colors=[STATUS_COLORS.get(s, MUTED) for s in status_counts['Status']]),
+            textinfo='percent',
+            textfont=dict(size=10, color=TEXT),
+        ))
+        apply_layout(fig, "Booking status (real data)",
+                     legend=dict(font=dict(size=8), orientation='h', y=-0.08))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with c2:
+        # Fare by vehicle type (real dataset)
+        df_success = df[df['Booking_Status'] == 'Success']
+        vehicle_palette = [PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT]
+        fig2 = go.Figure()
+        for i, vt in enumerate(sorted(df_success['Vehicle_Type'].dropna().unique())):
+            fig2.add_trace(go.Box(
+                y=df_success[df_success['Vehicle_Type'] == vt]['Booking_Value'],
+                name=vt,
+                marker=dict(color=vehicle_palette[i % len(vehicle_palette)]),
+                boxpoints=False,
+            ))
+        apply_layout(fig2, "Fare by vehicle (real data)",
+                     showlegend=False, xaxis_tickangle=-30)
+        st.plotly_chart(fig2, use_container_width=True)
+
+    with c3:
+        # Bookings by hour (real dataset)
+        hourly = df.groupby('Hour').size().reset_index(name='Bookings')
+        fig3 = go.Figure(go.Bar(
+            x=hourly['Hour'], y=hourly['Bookings'],
+            marker=dict(color=PRIMARY),
+        ))
+        apply_layout(fig3, "Bookings by hour (real data)",
+                     xaxis=dict(dtick=3), showlegend=False)
+        st.plotly_chart(fig3, use_container_width=True)
+
+    # ── Row 2: model performance charts ───────────────────────────────────────
+    c4, c5, c6 = st.columns(3)
+
+    with c4:
+        # Actual vs predicted fare (model)
+        sample = pred.sample(min(2500, len(pred)), random_state=42)
+        fig4 = go.Figure()
+        for i, vt in enumerate(sorted(sample['Vehicle_Type'].unique())):
+            vt_rows = sample[sample['Vehicle_Type'] == vt]
+            fig4.add_trace(go.Scatter(
+                x=vt_rows['Actual_Fare'], y=vt_rows['Predicted_Fare'],
+                mode='markers', name=vt,
+                marker=dict(size=3, color=vehicle_palette[i % len(vehicle_palette)], opacity=0.5),
+            ))
+        fig4.add_trace(go.Scatter(
+            x=[0, y_actual.max()], y=[0, y_actual.max()],
+            mode='lines', line=dict(color=MUTED, dash='dash', width=1),
+            showlegend=False, hoverinfo='skip',
+        ))
+        apply_layout(fig4, "Actual vs predicted fare",
+                     legend=dict(font=dict(size=7), orientation='h', y=-0.18))
+        st.plotly_chart(fig4, use_container_width=True)
+
+    with c5:
+        # Feature importances (model)
+        fi = pd.Series(model.feature_importances_, index=features).sort_values(ascending=True)
+        fig5 = go.Figure(go.Bar(
+            x=fi.values, y=fi.index, orientation='h',
+            marker=dict(color=GREEN),
+            text=[f"{v:.3f}" for v in fi.values],
+            textposition='outside',
+            textfont=dict(size=9, color=TEXT),
+        ))
+        apply_layout(fig5, "Feature importances", showlegend=False)
+        st.plotly_chart(fig5, use_container_width=True)
+
+    with c6:
+        # Residual distribution (model)
+        residuals = y_actual - y_predicted
+        fig6 = go.Figure(go.Histogram(
+            x=residuals, nbinsx=50,
+            marker=dict(color=PRIMARY),
+        ))
+        apply_layout(fig6, "Prediction error distribution",
+                     xaxis_title="Error (Rs.)", showlegend=False)
+        st.plotly_chart(fig6, use_container_width=True)
