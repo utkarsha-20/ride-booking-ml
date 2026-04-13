@@ -325,7 +325,7 @@ with tab_predict:
                         padding-bottom:12px; border-bottom:1px solid {BORDER};
                         margin-bottom:12px;">
                 <span style="font-size:13px; color:{MUTED};">Fare</span>
-                <span style="font-size:26px; font-weight:600; color:{TEXT}; line-height:1;">
+                <span style="font-size:26px; font-weight:600; color:{PURPLE}; line-height:1;">
                     Rs. {predicted_fare:,.0f}
                 </span>
             </div>
@@ -375,12 +375,14 @@ with tab_predict:
             fig.add_trace(go.Scatter(
                 x=curve_df['Distance'], y=curve_df['Fare'],
                 mode='lines',
-                line=dict(color=TEXT, width=1.5),
+                line=dict(color=PURPLE, width=2),
+                fill='tozeroy',
+                fillcolor='rgba(188, 140, 255, 0.08)',
             ))
             fig.add_trace(go.Scatter(
                 x=[distance], y=[predicted_fare],
                 mode='markers',
-                marker=dict(color=TEXT, size=8, line=dict(color=BG, width=2)),
+                marker=dict(color=PURPLE, size=10, line=dict(color=BG, width=2)),
                 showlegend=False,
             ))
             apply_layout(fig, "",
@@ -409,9 +411,10 @@ with tab_predict:
             })
         cmp_df = pd.DataFrame(compare_rows).sort_values('Fare').reset_index(drop=True)
 
-        # Highlight the selected vehicle, everything else stays muted
-        bar_colors = [TEXT if v == vehicle_type else BORDER for v in cmp_df['Vehicle']]
-        text_colors = [TEXT if v == vehicle_type else MUTED for v in cmp_df['Vehicle']]
+        # Highlight the selected vehicle in the accent color; others in a
+        # visible but secondary gray (not the border color)
+        bar_colors = [PURPLE if v == vehicle_type else '#4b5563' for v in cmp_df['Vehicle']]
+        text_colors = [PURPLE if v == vehicle_type else MUTED for v in cmp_df['Vehicle']]
 
         st.markdown(f"""
         <div style="font-size:11px; color:{MUTED}; margin:18px 0 4px 0;">
