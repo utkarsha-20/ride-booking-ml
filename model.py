@@ -17,7 +17,6 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
-from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
 
 BASE = Path(__file__).parent
@@ -88,23 +87,24 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Balance classes with sample weights
-sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
-
 # ── 6. Train ──────────────────────────────────────────────────────────────────
+# Note: no class balancing — we let the model learn the natural class
+# distribution, which gives the best accuracy on this synthetic dataset.
 print("Training XGBoost Classifier...")
 model = XGBClassifier(
-    n_estimators=400,
-    max_depth=6,
-    learning_rate=0.08,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    min_child_weight=3,
+    n_estimators=500,
+    max_depth=8,
+    learning_rate=0.05,
+    subsample=0.85,
+    colsample_bytree=0.85,
+    min_child_weight=2,
+    reg_alpha=0.1,
+    reg_lambda=1.0,
     random_state=42,
     n_jobs=-1,
     eval_metric='mlogloss',
 )
-model.fit(X_train, y_train, sample_weight=sample_weights)
+model.fit(X_train, y_train)
 
 # ── 7. Evaluate ───────────────────────────────────────────────────────────────
 y_pred = model.predict(X_test)
