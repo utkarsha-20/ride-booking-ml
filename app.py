@@ -134,6 +134,37 @@ st.markdown(f"""
     [data-testid="stVerticalBlock"] > div {{
         gap: 0.25rem !important;
     }}
+
+    /* Neutral button — override primary red/orange */
+    .stButton > button {{
+        background: {SURFACE} !important;
+        color: {TEXT} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 6px !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        padding: 6px 14px !important;
+        box-shadow: none !important;
+    }}
+    .stButton > button:hover {{
+        background: #222831 !important;
+        border-color: #484f58 !important;
+        color: {TEXT} !important;
+    }}
+    .stButton > button:focus {{
+        box-shadow: none !important;
+        outline: none !important;
+    }}
+
+    /* Form inputs — consistent neutral styling */
+    [data-baseweb="select"] > div,
+    .stNumberInput input,
+    .stTextInput input {{
+        background: {SURFACE} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 6px !important;
+        color: {TEXT} !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -210,36 +241,54 @@ tab_predict, tab_insights = st.tabs(["Predict", "Insights"])
 # TAB 1: PREDICT — Fare calculator
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_predict:
-    # Inline form — all inputs across one row
-    f1, f2, f3, f4, f5 = st.columns([1.3, 1.3, 1, 1.3, 0.7])
-    with f1:
-        vehicle_type = st.selectbox("Vehicle", VEHICLE_TYPES, index=4,
-                                    label_visibility="collapsed")
-    with f2:
-        distance = st.slider("Distance", min_value=1, max_value=50, value=15, step=1,
-                             label_visibility="collapsed")
-    with f3:
-        hour = st.slider("Hour", min_value=0, max_value=23, value=9, step=1,
-                         label_visibility="collapsed")
-    with f4:
-        day_of_week = st.selectbox("Day",
-                                    ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
-                                    label_visibility="collapsed")
-        dow_map = {'Monday':0,'Tuesday':1,'Wednesday':2,'Thursday':3,'Friday':4,'Saturday':5,'Sunday':6}
-        dow = dow_map[day_of_week]
-    with f5:
-        predict_btn = st.button("Predict", type="primary", use_container_width=True)
+    HOUR_OPTIONS = [f"{h:02d}:00" for h in range(24)]
+    DAY_OPTIONS  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                    'Friday', 'Saturday', 'Sunday']
+    DOW_MAP = {d: i for i, d in enumerate(DAY_OPTIONS)}
 
-    # Field labels row
+    # ── Labels row ────────────────────────────────────────────────────────────
     st.markdown(f"""
-    <div style="display:flex; gap:0; padding:0 0 6px 0; border-bottom:1px solid {BORDER}; margin-bottom:10px;">
-        <span style="flex:1.3; font-size:10px; color:{MUTED};">Vehicle type</span>
-        <span style="flex:1.3; font-size:10px; color:{MUTED};">Distance (km)</span>
-        <span style="flex:1; font-size:10px; color:{MUTED};">Hour</span>
-        <span style="flex:1.3; font-size:10px; color:{MUTED};">Day</span>
-        <span style="flex:0.7;"></span>
+    <div style="display:grid;
+                grid-template-columns: 1.4fr 1fr 1fr 1.3fr 0.9fr;
+                gap:12px; padding:4px 0 4px 0;">
+        <span style="font-size:11px; color:{MUTED};">Vehicle type</span>
+        <span style="font-size:11px; color:{MUTED};">Distance (km)</span>
+        <span style="font-size:11px; color:{MUTED};">Hour</span>
+        <span style="font-size:11px; color:{MUTED};">Day of week</span>
+        <span></span>
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Inputs row ────────────────────────────────────────────────────────────
+    f1, f2, f3, f4, f5 = st.columns([1.4, 1, 1, 1.3, 0.9])
+    with f1:
+        vehicle_type = st.selectbox(
+            "Vehicle", VEHICLE_TYPES, index=4,
+            label_visibility="collapsed",
+        )
+    with f2:
+        distance = st.number_input(
+            "Distance", min_value=1, max_value=50, value=15, step=1,
+            label_visibility="collapsed",
+        )
+    with f3:
+        hour_label = st.selectbox(
+            "Hour", HOUR_OPTIONS, index=9,
+            label_visibility="collapsed",
+        )
+        hour = int(hour_label.split(":")[0])
+    with f4:
+        day_of_week = st.selectbox(
+            "Day", DAY_OPTIONS, index=1,
+            label_visibility="collapsed",
+        )
+        dow = DOW_MAP[day_of_week]
+    with f5:
+        predict_btn = st.button("Calculate fare", use_container_width=True)
+
+    # Thin separator
+    st.markdown(f"<hr style='border:none; border-top:1px solid {BORDER}; margin:12px 0 14px 0;'/>",
+                unsafe_allow_html=True)
 
     if predict_btn:
         is_weekend = 1 if dow >= 5 else 0
@@ -260,74 +309,54 @@ with tab_predict:
 
         predicted_fare = float(model.predict(input_df)[0])
 
-        # Determine active surge tags
-        surge_tags = []
-        if is_peak:    surge_tags.append("Peak hour +25%")
-        if is_night:   surge_tags.append("Late night +30%")
-        if is_weekend: surge_tags.append("Weekend +10%")
-        surge_html = " &middot; ".join(surge_tags) if surge_tags else "No surge"
+        # Left side: definition-list style result.
+        # Right side: fare curve chart.
+        left, right = st.columns([1, 1.6])
 
-        # ── Result banner: big fare number ─────────────────────────────────
-        st.markdown(f"""
-        <div style="background:{SURFACE}; border:1px solid {BORDER};
-                    border-radius:6px; padding:16px 20px; margin-bottom:10px;">
-            <div style="display:flex; align-items:baseline; gap:16px;">
-                <div>
-                    <div style="font-size:11px; color:{MUTED}; margin-bottom:2px;">
-                        Predicted fare
-                    </div>
-                    <div style="font-size:32px; font-weight:600; color:{GREEN}; line-height:1;">
-                        Rs. {predicted_fare:,.0f}
-                    </div>
-                </div>
-                <div style="margin-left:auto; text-align:right;">
-                    <div style="font-size:11px; color:{MUTED}; margin-bottom:2px;">
-                        {distance} km &middot; {vehicle_type} &middot; {hour:02d}:00
-                    </div>
-                    <div style="font-size:11px; color:{MUTED};">
-                        {surge_html}
-                    </div>
-                </div>
+        with left:
+            surge_parts = []
+            if is_peak:    surge_parts.append("peak hour")
+            if is_night:   surge_parts.append("late night")
+            if is_weekend: surge_parts.append("weekend")
+            surge_text = ", ".join(surge_parts) if surge_parts else "none"
+
+            st.markdown(f"""
+            <div style="display:flex; align-items:baseline; gap:8px;
+                        padding-bottom:12px; border-bottom:1px solid {BORDER};
+                        margin-bottom:12px;">
+                <span style="font-size:13px; color:{MUTED};">Fare</span>
+                <span style="font-size:26px; font-weight:600; color:{TEXT}; line-height:1;">
+                    Rs. {predicted_fare:,.0f}
+                </span>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
 
-        # ── Charts row ─────────────────────────────────────────────────────
-        ch1, ch2, ch3 = st.columns(3)
+            <table style="width:100%; border-collapse:collapse; font-size:13px; color:{TEXT};">
+                <tr>
+                    <td style="padding:6px 0; color:{MUTED}; width:42%;">Vehicle</td>
+                    <td style="padding:6px 0;">{vehicle_type}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 0; color:{MUTED};
+                               border-top:1px solid {BORDER};">Distance</td>
+                    <td style="padding:6px 0; border-top:1px solid {BORDER};">{distance} km</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 0; color:{MUTED};
+                               border-top:1px solid {BORDER};">Time</td>
+                    <td style="padding:6px 0; border-top:1px solid {BORDER};">
+                        {day_of_week}, {hour_label}
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 0; color:{MUTED};
+                               border-top:1px solid {BORDER};">Surge</td>
+                    <td style="padding:6px 0; border-top:1px solid {BORDER};">{surge_text}</td>
+                </tr>
+            </table>
+            """, unsafe_allow_html=True)
 
-        with ch1:
-            # Compare fare across all vehicle types for this distance & time
-            compare_rows = []
-            for vt in VEHICLE_TYPES:
-                vt_code = int(le_vehicle.transform([vt])[0])
-                row = pd.DataFrame([{
-                    'Ride_Distance':    distance,
-                    'Vehicle_Type_Enc': vt_code,
-                    'Hour':             hour,
-                    'DayOfWeek':        dow,
-                    'IsWeekend':        is_weekend,
-                    'IsNight':          is_night,
-                    'IsPeakHour':       is_peak,
-                }])
-                compare_rows.append({
-                    'Vehicle': vt,
-                    'Fare': float(model.predict(row)[0])
-                })
-            cmp_df = pd.DataFrame(compare_rows).sort_values('Fare')
-            colors = [GREEN if v == vehicle_type else MUTED for v in cmp_df['Vehicle']]
-            fig = go.Figure(go.Bar(
-                x=cmp_df['Fare'], y=cmp_df['Vehicle'], orientation='h',
-                text=[f"Rs.{f:.0f}" for f in cmp_df['Fare']],
-                textposition='outside',
-                textfont=dict(size=9, color=TEXT),
-                marker=dict(color=colors),
-            ))
-            apply_layout(fig, "Fare across vehicles",
-                         showlegend=False, height=CH)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with ch2:
-            # Fare curve across all distances for selected vehicle
+        with right:
+            # Fare curve across all distances for selected vehicle + time
             curve_rows = []
             for d in range(1, 51):
                 row = pd.DataFrame([{
@@ -341,69 +370,62 @@ with tab_predict:
                 }])
                 curve_rows.append({'Distance': d, 'Fare': float(model.predict(row)[0])})
             curve_df = pd.DataFrame(curve_rows)
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
                 x=curve_df['Distance'], y=curve_df['Fare'],
-                mode='lines', line=dict(color=PRIMARY, width=2),
-                fill='tozeroy', fillcolor='rgba(88, 166, 255, 0.15)',
+                mode='lines',
+                line=dict(color=TEXT, width=1.5),
             ))
-            # Mark selected distance
-            fig2.add_trace(go.Scatter(
+            fig.add_trace(go.Scatter(
                 x=[distance], y=[predicted_fare],
-                mode='markers', marker=dict(color=GREEN, size=10, line=dict(color=TEXT, width=1)),
+                mode='markers',
+                marker=dict(color=TEXT, size=8, line=dict(color=BG, width=2)),
+                showlegend=False,
             ))
-            apply_layout(fig2, f"Fare curve ({vehicle_type})",
-                         xaxis_title="Distance (km)", yaxis_title="Fare (Rs.)",
-                         showlegend=False, height=CH)
-            st.plotly_chart(fig2, use_container_width=True)
-
-        with ch3:
-            # Fare across all hours for selected vehicle + distance
-            hour_rows = []
-            for h in range(24):
-                is_n = 1 if (h >= 22 or h <= 4) else 0
-                is_p = 1 if h in (7, 8, 9, 17, 18, 19, 20) else 0
-                row = pd.DataFrame([{
-                    'Ride_Distance':    distance,
-                    'Vehicle_Type_Enc': vt_enc,
-                    'Hour':             h,
-                    'DayOfWeek':        dow,
-                    'IsWeekend':        is_weekend,
-                    'IsNight':          is_n,
-                    'IsPeakHour':       is_p,
-                }])
-                hour_rows.append({'Hour': h, 'Fare': float(model.predict(row)[0])})
-            hour_df = pd.DataFrame(hour_rows)
-            bar_colors = [GREEN if h == hour else PRIMARY for h in hour_df['Hour']]
-            fig3 = go.Figure(go.Bar(
-                x=hour_df['Hour'], y=hour_df['Fare'],
-                marker=dict(color=bar_colors),
-            ))
-            apply_layout(fig3, f"Fare by hour ({distance} km, {vehicle_type})",
-                         xaxis_title="Hour", yaxis_title="Fare (Rs.)",
+            apply_layout(fig, "",
+                         xaxis_title="Distance (km)",
+                         yaxis_title="Fare (Rs.)",
                          showlegend=False, height=CH,
-                         xaxis=dict(dtick=3))
-            st.plotly_chart(fig3, use_container_width=True)
+                         margin=dict(t=10, b=30, l=45, r=15))
+            st.plotly_chart(fig, use_container_width=True)
 
-        # ── Details ────────────────────────────────────────────────────────
-        with st.expander("Model inputs & breakdown"):
-            detail_df = pd.DataFrame([{
-                'Vehicle':       vehicle_type,
-                'Distance (km)': distance,
-                'Hour':          f"{hour:02d}:00",
-                'Day':           day_of_week,
-                'Weekend':       'Yes' if is_weekend else 'No',
-                'Night surge':   'Yes' if is_night else 'No',
-                'Peak surge':    'Yes' if is_peak else 'No',
-                'Predicted':     f"Rs. {predicted_fare:,.0f}",
+        # ── Vehicle comparison table below ───────────────────────────────────
+        compare_rows = []
+        for vt in VEHICLE_TYPES:
+            vt_code = int(le_vehicle.transform([vt])[0])
+            row = pd.DataFrame([{
+                'Ride_Distance':    distance,
+                'Vehicle_Type_Enc': vt_code,
+                'Hour':             hour,
+                'DayOfWeek':        dow,
+                'IsWeekend':        is_weekend,
+                'IsNight':          is_night,
+                'IsPeakHour':       is_peak,
             }])
-            st.dataframe(detail_df, use_container_width=True, hide_index=True)
-    else:
-        # Default empty state message
+            compare_rows.append({
+                'Vehicle': vt,
+                'Fare':    round(float(model.predict(row)[0]), 0),
+            })
+        cmp_df = pd.DataFrame(compare_rows).sort_values('Fare').reset_index(drop=True)
+        cmp_df['Fare'] = cmp_df['Fare'].apply(lambda x: f"Rs. {x:,.0f}")
+
         st.markdown(f"""
-        <div style="padding:40px 20px; text-align:center; color:{MUTED}; font-size:13px;
-                    border:1px dashed {BORDER}; border-radius:6px;">
-            Choose a vehicle, distance, hour, and day &mdash; then click <b>Predict</b>.
+        <div style="font-size:11px; color:{MUTED}; margin:18px 0 6px 0;">
+            Same ride across all vehicle types
+        </div>
+        """, unsafe_allow_html=True)
+        st.dataframe(
+            cmp_df, use_container_width=True, hide_index=True,
+            column_config={
+                "Vehicle": st.column_config.TextColumn("Vehicle"),
+                "Fare":    st.column_config.TextColumn("Fare"),
+            }
+        )
+    else:
+        st.markdown(f"""
+        <div style="color:{MUTED}; font-size:13px; padding:24px 0;">
+            Enter ride details above and click Calculate fare.
         </div>
         """, unsafe_allow_html=True)
 
