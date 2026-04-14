@@ -64,10 +64,16 @@ st.markdown(f"""
         margin-bottom: 8px;
     }}
     .topbar-title {{
-        font-size: 14px;
-        font-weight: 600;
+        font-size: 22px;
+        font-weight: 700;
         color: {TEXT};
-        letter-spacing: -0.3px;
+        letter-spacing: -0.5px;
+    }}
+    .topbar-tag {{
+        font-size: 12px;
+        color: {MUTED};
+        margin-left: 10px;
+        font-weight: 400;
     }}
     .topbar-meta {{
         font-size: 11px;
@@ -173,7 +179,10 @@ st.markdown(f"""
 # ── Header bar ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="topbar">
-    <span class="topbar-title">FareCast</span>
+    <div>
+        <span class="topbar-title">FareCast</span>
+        <span class="topbar-tag">ride fare prediction</span>
+    </div>
     <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
 </div>
 """, unsafe_allow_html=True)
