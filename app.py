@@ -655,36 +655,44 @@ with tab_insights:
         st.plotly_chart(fig2, use_container_width=True)
 
     with c3:
-        # Top 10 pickup locations (real dataset)
-        if 'Pickup_Location' in df.columns:
-            top_pickups = (
-                df['Pickup_Location']
-                .value_counts()
-                .head(10)
-                .sort_values(ascending=True)
-                .reset_index()
-            )
-            top_pickups.columns = ['Location', 'Rides']
+        # Cancellation reasons (real dataset) — strong variation: 6.5x ratio
+        if ('Canceled_Rides_by_Driver' in df.columns
+            and 'Canceled_Rides_by_Customer' in df.columns):
+
+            driver_reasons = df['Canceled_Rides_by_Driver'].value_counts()
+            cust_reasons   = df['Canceled_Rides_by_Customer'].value_counts()
+
+            # Build a combined sorted list — driver reasons + customer reasons
+            rows = []
+            for reason, count in driver_reasons.items():
+                rows.append({'Reason': reason, 'Count': int(count), 'Side': 'Driver'})
+            for reason, count in cust_reasons.items():
+                rows.append({'Reason': reason, 'Count': int(count), 'Side': 'Customer'})
+            rdf = pd.DataFrame(rows).sort_values('Count', ascending=True)
+
+            colors = [RED if s == 'Driver' else ORANGE for s in rdf['Side']]
+
             fig3 = go.Figure(go.Bar(
-                x=top_pickups['Rides'], y=top_pickups['Location'],
+                x=rdf['Count'], y=rdf['Reason'],
                 orientation='h',
-                marker=dict(color=ORANGE),
-                text=[f"{v:,}" for v in top_pickups['Rides']],
+                marker=dict(color=colors),
+                text=[f"{c:,}" for c in rdf['Count']],
                 textposition='outside',
                 textfont=dict(size=9, color=TEXT),
-                hovertemplate='%{y}: %{x:,} rides<extra></extra>',
+                hovertemplate='%{y}: %{x:,} rides<extra>%{customdata}</extra>',
+                customdata=rdf['Side'],
             ))
-            apply_layout(fig3, "Top pickup locations (real data)",
+            apply_layout(fig3, "Why rides get canceled (real data)",
                          showlegend=False,
-                         margin=dict(t=28, b=20, l=5, r=50))
+                         margin=dict(t=28, b=20, l=5, r=60))
             fig3.update_xaxes(
-                range=[0, top_pickups['Rides'].max() * 1.18],
+                range=[0, rdf['Count'].max() * 1.22],
                 showgrid=True, gridcolor=BORDER,
             )
-            fig3.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9))
+            fig3.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=8))
             st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.info("Pickup location data not available.")
+            st.info("Cancellation reason data not available.")
 
     # ── Row 2: model performance charts ───────────────────────────────────────
     c4, c5, c6 = st.columns(3)
