@@ -616,6 +616,9 @@ with tab_insights:
     m5.metric("MAE",          f"Rs. {mae:.1f}")
     m6.metric("RMSE",         f"Rs. {rmse:.1f}")
 
+    # Shared palette used by the row 1 & row 2 charts
+    vehicle_palette = [PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT]
+
     # ── Row 1: dataset charts ─────────────────────────────────────────────────
     c1, c2, c3 = st.columns(3)
 
