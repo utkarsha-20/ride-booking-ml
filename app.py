@@ -50,7 +50,7 @@ st.markdown(f"""
     }}
 
     .block-container {{
-        padding: 0.6rem 1.2rem 0.4rem 1.2rem !important;
+        padding: 3rem 1.2rem 0.4rem 1.2rem !important;
         max-width: 100% !important;
     }}
 
@@ -60,8 +60,8 @@ st.markdown(f"""
         align-items: center;
         justify-content: space-between;
         border-bottom: 1px solid {BORDER};
-        padding: 0 0 8px 0;
-        margin-bottom: 8px;
+        padding: 0 0 10px 0;
+        margin-bottom: 10px;
     }}
     .topbar-title {{
         font-size: 22px;
