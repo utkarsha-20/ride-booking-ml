@@ -218,6 +218,7 @@ real['Ride_Distance']   = real['Ride_Distance'].fillna(0)
 
 df_save = real[['Date', 'Hour', 'DayOfWeek', 'IsWeekend', 'IsNight', 'IsPeakHour',
                 'Vehicle_Type', 'Booking_Value', 'Ride_Distance',
-                'Driver_Ratings', 'Customer_Rating', 'Booking_Status']].copy()
+                'Driver_Ratings', 'Customer_Rating', 'Booking_Status',
+                'Canceled_Rides_by_Driver', 'Canceled_Rides_by_Customer']].copy()
 df_save.to_csv(BASE / "cleaned_data.csv", index=False)
 print("Cleaned data saved -> cleaned_data.csv")

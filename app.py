@@ -631,19 +631,33 @@ with tab_insights:
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
-        # Fare by vehicle type (real dataset)
-        df_success = df[df['Booking_Status'] == 'Success']
+        # Cancellation reasons (real dataset) — driver + customer side by side
         vehicle_palette = [PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT]
+
+        driver_reasons   = df['Canceled_Rides_by_Driver'].value_counts()
+        customer_reasons = df['Canceled_Rides_by_Customer'].value_counts()
+
+        # Combine into a single long dataframe with a "Side" column
+        reason_rows = []
+        for reason, count in driver_reasons.items():
+            reason_rows.append({'Side': 'Driver', 'Reason': reason, 'Count': count})
+        for reason, count in customer_reasons.items():
+            reason_rows.append({'Side': 'Customer', 'Reason': reason, 'Count': count})
+        reason_df = pd.DataFrame(reason_rows).sort_values('Count', ascending=True)
+
         fig2 = go.Figure()
-        for i, vt in enumerate(sorted(df_success['Vehicle_Type'].dropna().unique())):
-            fig2.add_trace(go.Box(
-                y=df_success[df_success['Vehicle_Type'] == vt]['Booking_Value'],
-                name=vt,
-                marker=dict(color=vehicle_palette[i % len(vehicle_palette)]),
-                boxpoints=False,
+        for side, color in [('Driver', RED), ('Customer', ORANGE)]:
+            side_df = reason_df[reason_df['Side'] == side]
+            fig2.add_trace(go.Bar(
+                x=side_df['Count'], y=side_df['Reason'],
+                orientation='h', name=side,
+                marker=dict(color=color),
+                hovertemplate='%{y}: %{x:,} rides<extra>' + side + '</extra>',
             ))
-        apply_layout(fig2, "Fare by vehicle (real data)",
-                     showlegend=False, xaxis_tickangle=-30)
+        apply_layout(fig2, "Cancellation reasons (real data)",
+                     legend=dict(font=dict(size=8), orientation='h', y=-0.15),
+                     margin=dict(t=28, b=30, l=5, r=15))
+        fig2.update_yaxes(tickfont=dict(size=8), automargin=True)
         st.plotly_chart(fig2, use_container_width=True)
 
     with c3:
