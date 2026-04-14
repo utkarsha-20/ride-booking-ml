@@ -216,24 +216,6 @@ df   = load_data(_file_key(BASE / "cleaned_data.csv"))
 pred = load_predictions(_file_key(BASE / "predictions.csv"))
 model, features, le_vehicle = load_model(_file_key(BASE / "xgb_model.pkl"))
 
-# Defensive: if cleaned_data.csv was cached from an older deploy without
-# the cancellation reason columns, force a retraining run so the file
-# is regenerated with the latest schema.
-REQUIRED_COLUMNS = {'Canceled_Rides_by_Driver', 'Canceled_Rides_by_Customer'}
-if not REQUIRED_COLUMNS.issubset(df.columns):
-    with st.spinner("Updating dataset schema..."):
-        try:
-            runpy.run_path(str(BASE / "model.py"), run_name="__main__")
-            load_data.clear()
-            load_predictions.clear()
-            load_model.clear()
-            df   = load_data(_file_key(BASE / "cleaned_data.csv"))
-            pred = load_predictions(_file_key(BASE / "predictions.csv"))
-            model, features, le_vehicle = load_model(_file_key(BASE / "xgb_model.pkl"))
-        except Exception as e:
-            st.error(f"Failed to refresh dataset: {e}")
-            st.stop()
-
 VEHICLE_TYPES = ['Bike', 'eBike', 'Auto', 'Mini', 'Prime Sedan', 'Prime Plus', 'Prime SUV']
 
 CHART_LAYOUT = dict(
@@ -454,6 +436,8 @@ with tab_predict:
                     'IsNight':          is_night,
                     'IsPeakHour':       is_peak,
             
+            
+            
                 }])
                 curve_rows.append({'Distance': d, 'Fare': float(model.predict(row)[0])})
             curve_df = pd.DataFrame(curve_rows)
@@ -651,45 +635,21 @@ with tab_insights:
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
-        # Cancellation reasons (real dataset) — driver + customer side by side
-        vehicle_palette = [PRIMARY, GREEN, ORANGE, PURPLE, RED, MUTED, TEXT]
-
-        has_reason_cols = (
-            'Canceled_Rides_by_Driver' in df.columns
-            and 'Canceled_Rides_by_Customer' in df.columns
-        )
-
-        if not has_reason_cols:
-            st.info(
-                "Cancellation reason data not available. "
-                "Rerun `python model.py` to regenerate cleaned_data.csv."
-            )
-        else:
-            driver_reasons   = df['Canceled_Rides_by_Driver'].value_counts()
-            customer_reasons = df['Canceled_Rides_by_Customer'].value_counts()
-
-            # Combine into a single long dataframe with a "Side" column
-            reason_rows = []
-            for reason, count in driver_reasons.items():
-                reason_rows.append({'Side': 'Driver', 'Reason': reason, 'Count': count})
-            for reason, count in customer_reasons.items():
-                reason_rows.append({'Side': 'Customer', 'Reason': reason, 'Count': count})
-            reason_df = pd.DataFrame(reason_rows).sort_values('Count', ascending=True)
-
-            fig2 = go.Figure()
-            for side, color in [('Driver', RED), ('Customer', ORANGE)]:
-                side_df = reason_df[reason_df['Side'] == side]
-                fig2.add_trace(go.Bar(
-                    x=side_df['Count'], y=side_df['Reason'],
-                    orientation='h', name=side,
-                    marker=dict(color=color),
-                    hovertemplate='%{y}: %{x:,} rides<extra>' + side + '</extra>',
-                ))
-            apply_layout(fig2, "Cancellation reasons (real data)",
-                         legend=dict(font=dict(size=8), orientation='h', y=-0.15),
-                         margin=dict(t=28, b=30, l=5, r=15))
-            fig2.update_yaxes(tickfont=dict(size=8), automargin=True)
-            st.plotly_chart(fig2, use_container_width=True)
+        # Ride distance distribution (real dataset, successful rides only)
+        dist_data = df.loc[
+            (df['Booking_Status'] == 'Success') & (df['Ride_Distance'] > 0),
+            'Ride_Distance'
+        ]
+        fig2 = go.Figure(go.Histogram(
+            x=dist_data, nbinsx=40,
+            marker=dict(color=PURPLE),
+            hovertemplate='%{x} km: %{y:,} rides<extra></extra>',
+        ))
+        apply_layout(fig2, "Ride distance distribution (real data)",
+                     xaxis_title="Distance (km)",
+                     yaxis_title="Rides",
+                     showlegend=False)
+        st.plotly_chart(fig2, use_container_width=True)
 
     with c3:
         # Bookings by hour (real dataset)
