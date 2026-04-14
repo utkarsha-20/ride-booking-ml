@@ -483,9 +483,23 @@ with tab_predict:
             })
         cmp_df = pd.DataFrame(compare_rows).sort_values('Fare').reset_index(drop=True)
 
-        # Each vehicle uses its own color; text for the selected vehicle is bold.
+        # Selected vehicle at full opacity; others dimmed so the pick stands out
         bar_colors  = [VEHICLE_COLORS[v] for v in cmp_df['Vehicle']]
-        text_colors = [VEHICLE_COLORS[v] for v in cmp_df['Vehicle']]
+        bar_opacity = [1.0 if v == vehicle_type else 0.28 for v in cmp_df['Vehicle']]
+        # Label next to the selected bar gets a small indicator; others stay muted
+        bar_texts = [
+            f"Rs. {f:,.0f}   ← selected" if v == vehicle_type else f"Rs. {f:,.0f}"
+            for v, f in zip(cmp_df['Vehicle'], cmp_df['Fare'])
+        ]
+        text_colors = [
+            VEHICLE_COLORS[v] if v == vehicle_type else MUTED
+            for v in cmp_df['Vehicle']
+        ]
+        # Color the y-axis tick labels so the selected vehicle name is accented
+        tick_colors = [
+            VEHICLE_COLORS[v] if v == vehicle_type else MUTED
+            for v in cmp_df['Vehicle']
+        ]
 
         st.markdown(f"""
         <div style="font-size:11px; color:{MUTED}; margin:18px 0 4px 0;">
@@ -495,22 +509,33 @@ with tab_predict:
 
         fig_cmp = go.Figure(go.Bar(
             x=cmp_df['Fare'], y=cmp_df['Vehicle'], orientation='h',
-            marker=dict(color=bar_colors),
-            text=[f"Rs. {f:,.0f}" for f in cmp_df['Fare']],
+            marker=dict(color=bar_colors, opacity=bar_opacity),
+            text=bar_texts,
             textposition='outside',
             textfont=dict(size=11, color=text_colors),
             hovertemplate='%{y}: Rs. %{x:,.0f}<extra></extra>',
         ))
         apply_layout(fig_cmp, "",
                      showlegend=False, height=240,
-                     margin=dict(t=10, b=25, l=90, r=60),
+                     margin=dict(t=10, b=25, l=110, r=90),
                      xaxis_title="Fare (Rs.)")
-        # Make room for outside text labels
+        # Room for outside text labels including the "← selected" suffix
         fig_cmp.update_xaxes(
-            range=[0, cmp_df['Fare'].max() * 1.18],
+            range=[0, cmp_df['Fare'].max() * 1.32],
             showgrid=True, gridcolor=BORDER,
         )
-        fig_cmp.update_yaxes(showgrid=False)
+        # Per-tick label coloring: color the selected vehicle name in its accent
+        fig_cmp.update_yaxes(
+            showgrid=False,
+            tickmode='array',
+            tickvals=list(cmp_df['Vehicle']),
+            ticktext=[
+                f"<span style='color:{tick_colors[i]};'><b>{v}</b></span>"
+                if v == vehicle_type
+                else f"<span style='color:{tick_colors[i]};'>{v}</span>"
+                for i, v in enumerate(cmp_df['Vehicle'])
+            ],
+        )
         st.plotly_chart(fig_cmp, use_container_width=True)
 
         # ── Save to MySQL ─────────────────────────────────────────────────
