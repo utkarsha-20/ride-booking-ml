@@ -144,15 +144,16 @@ st.markdown(f"""
         gap: 0.25rem !important;
     }}
 
-    /* Footer byline — fixed bottom-right, unobtrusive */
+    /* Footer byline — fixed bottom-left (right is taken by Streamlit) */
     .byline {{
-        position: fixed;
-        bottom: 10px;
-        right: 18px;
-        font-size: 11px;
-        color: {MUTED};
-        z-index: 100;
+        position: fixed !important;
+        bottom: 8px !important;
+        left: 18px !important;
+        font-size: 12px !important;
+        color: {MUTED} !important;
+        z-index: 9999 !important;
         pointer-events: none;
+        background: transparent;
     }}
 
     /* Neutral button — override primary red/orange */
