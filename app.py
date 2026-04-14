@@ -45,6 +45,18 @@ st.markdown(f"""
     /* Hide sidebar toggle */
     [data-testid="collapsedControl"] {{ display: none; }}
 
+    /* Hide Streamlit Cloud toolbar clutter (Share, Star, Edit) —
+       keep only the GitHub link + three-dot menu */
+    [data-testid="stToolbarActionButtonShare"],
+    [data-testid="stToolbarActionButtonFavorite"],
+    [data-testid="stToolbarActionButtonEdit"],
+    [data-testid="stBaseButton-headerNoPadding"][kind="header"]:has(svg[data-icon="star"]),
+    button[title="Share this app"],
+    button[title="Favorite this app"],
+    a[title="Edit this app"] {{
+        display: none !important;
+    }}
+
     .stApp {{
         background: {BG};
     }}
