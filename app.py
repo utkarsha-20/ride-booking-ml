@@ -197,7 +197,7 @@ st.markdown(f"""
     </div>
     <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
 </div>
-<div class="byline">Built by Utkarsha Bhad</div>
+<div class="byline">Built by Utkarsha</div>
 """, unsafe_allow_html=True)
 
 # ── Data ──────────────────────────────────────────────────────────────────────
