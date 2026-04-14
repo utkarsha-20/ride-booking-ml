@@ -156,16 +156,11 @@ st.markdown(f"""
         gap: 0.25rem !important;
     }}
 
-    /* Footer byline — fixed bottom-left (right is taken by Streamlit) */
-    .byline {{
-        position: fixed !important;
-        bottom: 8px !important;
-        left: 18px !important;
-        font-size: 12px !important;
-        color: {MUTED} !important;
-        z-index: 9999 !important;
-        pointer-events: none;
-        background: transparent;
+    /* Inline byline next to the title */
+    .topbar-author {{
+        font-size: 11px;
+        color: {MUTED};
+        margin-left: 14px;
     }}
 
     /* Neutral button — override primary red/orange */
@@ -208,9 +203,11 @@ st.markdown(f"""
         <span class="topbar-title">FareCast</span>
         <span class="topbar-tag">ride fare prediction</span>
     </div>
-    <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
+        <span class="topbar-author">Built by Utkarsha</span>
+    </div>
 </div>
-<div class="byline">Built by Utkarsha</div>
 """, unsafe_allow_html=True)
 
 # ── Data ──────────────────────────────────────────────────────────────────────
