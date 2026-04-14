@@ -2,25 +2,20 @@
 
 A machine learning app that predicts ride fare based on distance, vehicle type, and time of day.
 
-Built with XGBoost, Streamlit, and MySQL.
+**Live demo:** https://farecast-ride.streamlit.app/
+
+Built with XGBoost, Streamlit, Plotly, and MySQL (Railway).
 
 ## What it does
 
-Given a ride's distance, vehicle type, hour, and day of week, the model predicts the fare in Rs. The dashboard also shows analytics on 103,024 real ride bookings from July 2024.
+Given a ride's distance, vehicle type, hour, and day of week, the model predicts the fare in Rs. Every prediction can be saved to a cloud MySQL database. The dashboard also shows analytics on 103,024 real ride bookings from July 2024.
 
 ## Tech stack
 
 - **Model:** XGBoost Regressor
 - **Dashboard:** Streamlit + Plotly
-- **Database:** MySQL (via MySQL Workbench)
-
-## Data note
-
-The real dataset (`Bookings.xlsx`) contains 103,024 rides but the fares in it are uniformly distributed — a 5 km ride costs the same as a 50 km ride. Because of that, no model can learn a useful fare signal from the raw data.
-
-To build a **meaningful** fare prediction model, the training data is simulated from a realistic Indian ride-hailing fare formula (base fare + per-km rate + surge pricing for peak hours, late night, and weekends). The XGBoost model learns the actual fare structure from this simulation.
-
-The real dataset is still used throughout the **Overview** and **Analytics** tabs to show actual booking patterns, vehicle mix, cancellation rates, and so on.
+- **Database:** MySQL hosted on Railway
+- **Deployment:** Streamlit Cloud (auto-deploys from GitHub)
 
 ## Model performance
 
@@ -29,10 +24,24 @@ The real dataset is still used throughout the **Overview** and **Analytics** tab
 - **RMSE = Rs. 34**
 
 Top features by importance:
+
 1. Vehicle type (52.6%)
 2. Distance (30.9%)
 3. Late-night surge (7.9%)
 4. Peak-hour surge (6.8%)
+
+## Data note
+
+The real dataset (`Bookings.xlsx`) contains 103,024 rides but the fares in it are uniformly distributed — a 5 km ride costs the same as a 50 km ride. Because of that, no model can learn a useful fare signal from the raw data.
+
+To build a **meaningful** fare prediction model, the training data is simulated from a realistic Indian ride-hailing fare formula (base fare + per-km rate + surge pricing for peak hours, late night, and weekends). The XGBoost model learns the actual fare structure from this simulation.
+
+The real dataset is still used throughout the **Insights** tab to show actual booking patterns, vehicle mix, distance distribution, and cancellation reasons.
+
+## Dashboard pages
+
+- **Predict** — pick vehicle, distance, hour, and day → see predicted fare, fare curve across distances, and a comparison across all vehicle types. Save any prediction to MySQL with one click.
+- **Insights** — KPIs + 6 charts: booking status, ride distance distribution, cancellation reasons, actual vs predicted scatter, feature importances, and residual distribution.
 
 ## Project structure
 
@@ -40,14 +49,14 @@ Top features by importance:
 .
 ├── Bookings.xlsx       # Raw dataset (103,024 rides)
 ├── model.py            # Generate training data + train XGBoost regressor
-├── app.py              # Streamlit dashboard (Overview, Analytics, Model, Predict)
-├── mysql_push.py       # Push cleaned data to MySQL Workbench
+├── app.py              # Streamlit dashboard (Predict + Insights tabs)
+├── db.py               # MySQL connection + save_prediction helper
 ├── requirements.txt
 ├── .env.example        # Template for MySQL credentials
 └── .gitignore
 ```
 
-## Setup
+## Setup (local)
 
 1. **Clone and install**
    ```bash
@@ -62,26 +71,28 @@ Top features by importance:
    ```
    Generates the training data, trains XGBoost, and saves `xgb_model.pkl`, `predictions.csv`, and `cleaned_data.csv`.
 
-3. **Run the dashboard**
+3. **Set up MySQL credentials** (optional — for saving predictions)
+
+   Copy `.env.example` to `.env` and fill in your MySQL connection details. Any MySQL host works (Railway, Filess.io, local MySQL Workbench, etc.).
+   ```
+   MYSQL_HOST=your-host
+   MYSQL_PORT=3306
+   MYSQL_USER=root
+   MYSQL_PASSWORD=your-password
+   MYSQL_DATABASE=railway
+   ```
+
+4. **Run the dashboard**
    ```bash
    streamlit run app.py
    ```
-   Opens at http://localhost:8501
-
-4. **(Optional) Push to MySQL**
-   - Copy `.env.example` to `.env` and fill in your MySQL credentials
-   - Make sure MySQL Workbench is running
-   ```bash
-   python mysql_push.py
-   ```
-
-## Dashboard pages
-
-- **Overview** — ride totals, status distribution, vehicle breakdown, success rate, hourly/daily patterns (from real data)
-- **Analytics** — fare and distance distributions, vehicle comparison radar, scatter plots (from real data)
-- **Model** — regression metrics (R², MAE, RMSE), actual vs predicted scatter, residual distribution, error by vehicle type
-- **Predict** — live fare prediction: pick vehicle, distance, hour, and day → see predicted fare, comparison across all vehicle types, fare-vs-distance curve, and fare-by-hour chart
 
 ## Security
 
-`.env` (MySQL password) is listed in `.gitignore` and never committed. Use `.env.example` as a template.
+- `.env` is in `.gitignore` and never committed
+- On Streamlit Cloud, the same credentials live in the app's **Secrets** panel (not in git)
+- `db.py` reads from Streamlit secrets first, then falls back to `.env`
+
+## Screenshots
+
+Live app: https://farecast-ride.streamlit.app/
