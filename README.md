@@ -1,6 +1,6 @@
-# Ride Fare Prediction
+# FareCast
 
-Machine learning project that predicts ride fare based on distance, vehicle type, and time of day.
+A machine learning app that predicts ride fare based on distance, vehicle type, and time of day.
 
 Built with XGBoost, Streamlit, and MySQL.
 

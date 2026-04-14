@@ -12,7 +12,7 @@ import streamlit as st
 import db
 
 st.set_page_config(
-    page_title="Ride Bookings",
+    page_title="FareCast",
     page_icon="🚗",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -173,7 +173,7 @@ st.markdown(f"""
 # ── Header bar ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="topbar">
-    <span class="topbar-title">Ride Fare Prediction</span>
+    <span class="topbar-title">FareCast</span>
     <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
 </div>
 """, unsafe_allow_html=True)
