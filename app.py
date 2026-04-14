@@ -144,6 +144,17 @@ st.markdown(f"""
         gap: 0.25rem !important;
     }}
 
+    /* Footer byline — fixed bottom-right, unobtrusive */
+    .byline {{
+        position: fixed;
+        bottom: 10px;
+        right: 18px;
+        font-size: 11px;
+        color: {MUTED};
+        z-index: 100;
+        pointer-events: none;
+    }}
+
     /* Neutral button — override primary red/orange */
     .stButton > button {{
         background: {SURFACE} !important;
@@ -186,6 +197,7 @@ st.markdown(f"""
     </div>
     <span class="topbar-meta">103,024 records &middot; July 2024 &middot; XGBoost Regressor</span>
 </div>
+<div class="byline">Built by Utkarsha Bhad</div>
 """, unsafe_allow_html=True)
 
 # ── Data ──────────────────────────────────────────────────────────────────────
