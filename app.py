@@ -655,15 +655,36 @@ with tab_insights:
         st.plotly_chart(fig2, use_container_width=True)
 
     with c3:
-        # Bookings by hour (real dataset)
-        hourly = df.groupby('Hour').size().reset_index(name='Bookings')
-        fig3 = go.Figure(go.Bar(
-            x=hourly['Hour'], y=hourly['Bookings'],
-            marker=dict(color=PRIMARY),
-        ))
-        apply_layout(fig3, "Bookings by hour (real data)",
-                     xaxis=dict(dtick=3), showlegend=False)
-        st.plotly_chart(fig3, use_container_width=True)
+        # Top 10 pickup locations (real dataset)
+        if 'Pickup_Location' in df.columns:
+            top_pickups = (
+                df['Pickup_Location']
+                .value_counts()
+                .head(10)
+                .sort_values(ascending=True)
+                .reset_index()
+            )
+            top_pickups.columns = ['Location', 'Rides']
+            fig3 = go.Figure(go.Bar(
+                x=top_pickups['Rides'], y=top_pickups['Location'],
+                orientation='h',
+                marker=dict(color=ORANGE),
+                text=[f"{v:,}" for v in top_pickups['Rides']],
+                textposition='outside',
+                textfont=dict(size=9, color=TEXT),
+                hovertemplate='%{y}: %{x:,} rides<extra></extra>',
+            ))
+            apply_layout(fig3, "Top pickup locations (real data)",
+                         showlegend=False,
+                         margin=dict(t=28, b=20, l=5, r=50))
+            fig3.update_xaxes(
+                range=[0, top_pickups['Rides'].max() * 1.18],
+                showgrid=True, gridcolor=BORDER,
+            )
+            fig3.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9))
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("Pickup location data not available.")
 
     # ── Row 2: model performance charts ───────────────────────────────────────
     c4, c5, c6 = st.columns(3)
