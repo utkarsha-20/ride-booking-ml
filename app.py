@@ -193,27 +193,46 @@ if not (BASE / "xgb_model.pkl").exists():
             st.error(f"Model training failed: {e}")
             st.stop()
 
-def _mtime(path):
-    return path.stat().st_mtime if path.exists() else 0
+def _file_key(path):
+    """File-size-based cache key. Changes whenever the file changes."""
+    return path.stat().st_size if path.exists() else 0
 
 @st.cache_data
-def load_data(_mtime_key):
+def load_data(_cache_key):
     return pd.read_csv(BASE / "cleaned_data.csv", parse_dates=['Date'])
 
 @st.cache_data
-def load_predictions(_mtime_key):
+def load_predictions(_cache_key):
     return pd.read_csv(BASE / "predictions.csv")
 
 @st.cache_resource
-def load_model(_mtime_key):
+def load_model(_cache_key):
     model    = joblib.load(BASE / "xgb_model.pkl")
     features = joblib.load(BASE / "features.pkl")
     le_v     = joblib.load(BASE / "le_vehicle.pkl")
     return model, features, le_v
 
-df   = load_data(_mtime(BASE / "cleaned_data.csv"))
-pred = load_predictions(_mtime(BASE / "predictions.csv"))
-model, features, le_vehicle = load_model(_mtime(BASE / "xgb_model.pkl"))
+df   = load_data(_file_key(BASE / "cleaned_data.csv"))
+pred = load_predictions(_file_key(BASE / "predictions.csv"))
+model, features, le_vehicle = load_model(_file_key(BASE / "xgb_model.pkl"))
+
+# Defensive: if cleaned_data.csv was cached from an older deploy without
+# the cancellation reason columns, force a retraining run so the file
+# is regenerated with the latest schema.
+REQUIRED_COLUMNS = {'Canceled_Rides_by_Driver', 'Canceled_Rides_by_Customer'}
+if not REQUIRED_COLUMNS.issubset(df.columns):
+    with st.spinner("Updating dataset schema..."):
+        try:
+            runpy.run_path(str(BASE / "model.py"), run_name="__main__")
+            load_data.clear()
+            load_predictions.clear()
+            load_model.clear()
+            df   = load_data(_file_key(BASE / "cleaned_data.csv"))
+            pred = load_predictions(_file_key(BASE / "predictions.csv"))
+            model, features, le_vehicle = load_model(_file_key(BASE / "xgb_model.pkl"))
+        except Exception as e:
+            st.error(f"Failed to refresh dataset: {e}")
+            st.stop()
 
 VEHICLE_TYPES = ['Bike', 'eBike', 'Auto', 'Mini', 'Prime Sedan', 'Prime Plus', 'Prime SUV']
 
@@ -434,6 +453,7 @@ with tab_predict:
                     'IsWeekend':        is_weekend,
                     'IsNight':          is_night,
                     'IsPeakHour':       is_peak,
+            
                 }])
                 curve_rows.append({'Distance': d, 'Fare': float(model.predict(row)[0])})
             curve_df = pd.DataFrame(curve_rows)
