@@ -64,15 +64,16 @@ st.markdown(f"""
         margin-bottom: 10px;
     }}
     .topbar-title {{
-        font-size: 22px;
+        font-size: 32px;
         font-weight: 700;
-        color: {TEXT};
-        letter-spacing: -0.5px;
+        color: #ff9e64;
+        letter-spacing: -0.8px;
+        line-height: 1;
     }}
     .topbar-tag {{
-        font-size: 12px;
+        font-size: 13px;
         color: {MUTED};
-        margin-left: 10px;
+        margin-left: 12px;
         font-weight: 400;
     }}
     .topbar-meta {{
